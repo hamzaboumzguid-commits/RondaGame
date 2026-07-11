@@ -1,0 +1,32 @@
+{
+  "name": "ronda-server",
+  "version": "1.0.0",
+  "description": "Serveur Colyseus autoritaire pour la Ronda marocaine",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@colyseus/schema": "^4.0.27",
+    "@colyseus/ws-transport": "^0.17.13",
+    "colyseus": "^0.17.10",
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}
