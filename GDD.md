@@ -149,15 +149,15 @@ Exclus explicitement de la v1 : chat (texte/vocal/emoji), historique/scoreboard 
 ## 4. Stack technique (validée)
 
 - **Frontend mobile** : Flutter (Dart), cross-platform iOS + Android, un seul codebase. Choisi pour la richesse des animations custom possibles (Derba/Missa) et la bonne compatibilité avec Fable 5 pour la génération d'UI mobile.
-- **Backend temps réel** : Colyseus (Node.js/TypeScript). Framework spécialisé rooms multijoueur temps réel — correspond exactement au besoin (room code, 4 joueurs, état de partie synchronisé). Serveur **autoritaire** : toute la logique de jeu (règles, calcul des points, validation des coups) tourne côté serveur, le client Flutter ne fait qu'afficher l'état reçu et envoyer des intentions d'action. Nécessaire vu l'absence de comptes pour dissuader la triche côté client.
-- **Restant à trancher en cours de scaffolding** : génération/format des codes de room (longueur, alphabet, unicité, expiration), hébergement du serveur Colyseus (à définir avant déploiement, pas bloquant pour le développement local).
-
-### Répartition du travail par agent
-- **Sonnet 5** : architecture, scaffolding, logique de jeu serveur (règles métier testables, indépendantes de l'UI), infrastructure Colyseus, état de room/lobby.
-- **Fable 5** : implémentation UI Flutter — écrans (lobby, table de jeu, victoire), composants cartes, et surtout les animations Derba/Missa. Bascule prévue dès que le scaffolding + logique serveur de base sont en place.
+- **Backend temps réel** : serveur WebSocket pur (Node.js/TypeScript, package `ws`) avec protocole JSON maison. Serveur **autoritaire** : toute la logique de jeu (règles, calcul des points, validation des coups) tourne côté serveur, le client Flutter ne fait qu'afficher l'état reçu et envoyer des intentions d'action. Nécessaire vu l'absence de comptes pour dissuader la triche côté client.
+  - **Note de pivot (2026-07-11)** : Colyseus avait été validé initialement, mais il n'existe **aucun client Colyseus pour Dart/Flutter** (vérifié sur pub.dev — le protocole binaire 0.17 n'a pas de client communautaire vivant). Remplacé par WebSocket + JSON : plus simple, mieux adapté à un jeu tour-par-tour à état minuscule, et la logique de règles (`server/src/game/`) n'a pas changé d'une ligne.
+- Codes de room : 5 caractères, alphabet sans ambiguïtés (pas de 0/O/1/I/L). Room détruite quand vide ou partie abandonnée.
+- Hébergement du serveur : à définir avant déploiement (pas bloquant en local).
 
 ---
 
 ## 5. Historique des décisions
 
 - 2026-07-11 : recueil de besoin initial complet (règles clarifiées, scope v1 figé, style visuel marocain choisi, pas d'auth/compte, pas de reconnexion en v1). Document créé.
+- 2026-07-11 : stack validée (Flutter + Colyseus), scaffolding, moteur de règles testé (29 tests).
+- 2026-07-11 : pivot backend Colyseus → WebSocket pur + JSON (pas de client Dart pour Colyseus). Fin de partie immédiate à 41 pts implémentée (vérification après chaque attribution de points, pas seulement en fin de manche). App Flutter v1 complète : accueil, lobby, table de jeu, animations Derba (3 paliers)/Missa, victoire. E2E validé : 4 clients Flutter réels jouent une partie complète contre le serveur.

@@ -1,0 +1,94 @@
+import { Card, DerbaTier, TeamId } from "../game/types.js";
+
+/**
+ * Protocole JSON échangé sur WebSocket entre le client Flutter et le serveur.
+ * Le serveur est autoritaire : le client n'envoie que des intentions, le serveur
+ * renvoie l'état public complet après chaque changement (l'état est minuscule,
+ * pas besoin de sync différentielle pour un jeu tour-par-tour à 4 joueurs).
+ */
+
+// ---- Client -> Serveur ----
+
+export type ClientMessage =
+  | { type: "create"; nickname: string }
+  | { type: "join"; roomCode: string; nickname: string }
+  | { type: "joinTeam"; team: TeamId }
+  | { type: "start" }
+  | { type: "playCard"; cardId: string; capture: boolean };
+
+// ---- Serveur -> Client ----
+
+export interface PublicPlayer {
+  id: string;
+  nickname: string;
+  seat: number;
+  team: TeamId;
+  handCount: number;
+  hasAnnouncement: boolean; // badge neutre, sans valeur ni type (GDD 2.5)
+  isHost: boolean;
+}
+
+export interface PublicState {
+  phase: "lobby" | "playing" | "reveal" | "roundEnd" | "gameOver";
+  roomCode: string;
+  players: PublicPlayer[];
+  tablePile: Card[];
+  leadPlayerId: string;
+  currentTurnPlayerId: string;
+  scores: Record<TeamId, number>;
+  winningTeam: TeamId | "";
+  roundNumber: number;
+  dealIndex: number;
+}
+
+export interface RevealedAnnouncement {
+  playerId: string;
+  team: TeamId;
+  kind: "ronda" | "tringa";
+  rank: number;
+}
+
+export type ServerMessage =
+  | { type: "joined"; roomCode: string; playerId: string; state: PublicState }
+  | { type: "state"; state: PublicState }
+  | { type: "yourHand"; cards: Card[] }
+  | {
+      type: "captureEvent";
+      playerId: string;
+      team: TeamId;
+      playedCardId: string;
+      capturedCardIds: string[];
+      isDerba: boolean;
+      derbaTier: DerbaTier;
+      isMissa: boolean;
+      points: number;
+    }
+  | { type: "cardPlaced"; playerId: string; card: Card }
+  | {
+      type: "subRoundReveal";
+      announcements: RevealedAnnouncement[];
+      points: Partial<Record<TeamId, number>>;
+    }
+  | {
+      type: "roundEnd";
+      butinPoints: Partial<Record<TeamId, number>>;
+      bonusPoints: Partial<Record<TeamId, number>>;
+      cardCounts: Record<TeamId, number>;
+    }
+  | { type: "gameOver"; winningTeam: TeamId }
+  | { type: "gameAbandoned"; reason: string }
+  | { type: "error"; code: string; message: string };
+
+export function encode(msg: ServerMessage): string {
+  return JSON.stringify(msg);
+}
+
+export function decode(raw: string): ClientMessage | null {
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.type !== "string") return null;
+    return parsed as ClientMessage;
+  } catch {
+    return null;
+  }
+}

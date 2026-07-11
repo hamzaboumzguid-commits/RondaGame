@@ -7,7 +7,7 @@ function card(rank: Card["rank"], suit: Card["suit"] = "oros"): Card {
 }
 
 function player(id: string, team: "A" | "B" = "A"): PlayerState {
-  return { id, nickname: id, seat: 0, team, hand: [], connected: true };
+  return { id, nickname: id, seat: 0, team, hand: [] };
 }
 
 describe("Table.play — capture et suites", () => {

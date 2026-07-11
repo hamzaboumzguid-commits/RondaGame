@@ -9,61 +9,65 @@ Mobile game (iOS + Android) implementing the "Ronda marocaine — variante café
 **The full ruleset, all product decisions, and rationale live in [GDD.md](GDD.md) — read it before touching any game logic.** It is the single source of truth for scoring, turn order, and every edge case (Derba chains, Ronda/Tringa resolution, last-capture bonus, etc.). Update it when a rule interpretation changes.
 
 This is a monorepo with two independent projects:
-- `server/` — authoritative Colyseus (Node.js/TypeScript) backend. Owns all game logic and rule enforcement.
+- `server/` — authoritative Node.js/TypeScript backend: plain WebSocket (`ws`) + JSON protocol. Owns all game logic and rule enforcement. (Colyseus was tried and abandoned: no living Dart client exists — see GDD.md section 4.)
 - `app/` — Flutter (Dart) cross-platform client. Renders server-authoritative state; never re-implements scoring rules.
 
 ## Commands
 
 ### Server (`server/`)
 ```
-npm run dev          # tsx watch, runs src/index.ts with hot reload
+npm run dev          # tsx watch, runs src/index.ts with hot reload on :2567
 npm run build         # tsc compile to dist/ (ESM output)
 npm start             # run compiled dist/index.js
-npm test               # vitest run — run the full game-logic test suite once
-npm run test:watch    # vitest in watch mode
+npm test               # vitest run — full suite (rule engine + room orchestration + socket E2E)
 npx vitest run src/game/table.test.ts   # run a single test file
-npx tsc --noEmit       # typecheck only, no output
+npx tsc --noEmit       # typecheck only
 ```
-No lint script is configured yet.
+No lint script is configured.
 
 ### App (`app/`)
-Flutter SDK lives at `C:\dev\flutter` (cloned from the stable channel, not installed via a package manager — added to user PATH). If `flutter` is not found in a fresh shell, use `C:\dev\flutter\bin\flutter` directly or re-source PATH.
+Flutter SDK lives at `C:\dev\flutter` (cloned from the stable channel, added to user PATH). If `flutter` is not found in a fresh shell, use `C:\dev\flutter\bin\flutter` directly.
 ```
 flutter pub get
-flutter analyze        # static analysis — must be clean before considering a change done
-flutter test            # widget/unit tests
-flutter test test/some_test.dart   # run a single test file
+flutter analyze        # must be clean before considering a change done
+flutter test            # widget/unit tests (the e2e-tagged test self-skips if the server is down)
+flutter test --tags e2e test/game_client_e2e_test.dart   # full-game E2E vs live local server (start server first)
 flutter run              # launch on connected device/emulator
 ```
+The client connects to `ws://localhost:2567` by default; override at build time with `--dart-define=RONDA_SERVER=ws://host:port` (Android emulator needs `ws://10.0.2.2:2567`).
 
 ## Architecture
 
 ### Server: rule engine is separated from network plumbing
 
-`server/src/game/` is **pure logic with no Colyseus dependency** — it must stay independently testable:
-- `types.ts` — card/player/team/announcement domain types, `RANK_ORDER` (the game's value ordering, As < 2 < ... < Roi), point constants (`TARGET_SCORE`, `BUTIN_THRESHOLD`, `CARDS_TOTAL`).
-- `deck.ts` — 40-card Spanish deck construction and Fisher-Yates shuffle.
-- `table.ts` — the `Table` class: capture resolution (including the "capture a rank pulls the whole contiguous ascending sequence" rule — see GDD 2.6, this is stricter than it first looks, it will sweep unrelated contiguous cards too), Derba detection and chain-tier escalation (1→5→10, capped at 3 in a row since only 4 copies of each rank exist), Missa detection.
-- `rondaTringa.ts` — end-of-sub-round resolution for announced Rondas/Tringas: single Ronda, 2/3-Ronda highest-wins-with-tie-cancels, 4-Ronda lowest-wins-with-cascading-tiebreak, Tringa-always-beats-Ronda with the +1 bonus. This function is the trickiest piece of the ruleset — re-read GDD 2.9 before modifying it.
-- `round.ts` — butin (loot) counting, last-capture bonus/malus (Roi +5 / As -5-to-opponent), lead-seat rotation ("to the right" = seat N → (N+3)%4 given seats are numbered clockwise 0→1→2→3).
+`server/src/game/` is **pure logic with no network dependency** — it must stay independently testable:
+- `types.ts` — card/player/team/announcement domain types, `RANK_ORDER` (As < 2 < ... < Roi), point constants (`TARGET_SCORE` 41, `BUTIN_THRESHOLD` 20, `DERBA_POINTS` 1/5/10).
+- `deck.ts` — 40-card Spanish deck + Fisher-Yates shuffle.
+- `table.ts` — the `Table` class: capture resolution (capturing a rank also sweeps the whole contiguous ascending sequence — stricter than it first looks, it takes unrelated contiguous cards too; see GDD 2.6), Derba detection with chain-tier escalation (capped at tier 3 since only 4 copies of each rank exist), Missa detection. A non-capture play breaks any Derba chain.
+- `rondaTringa.ts` — end-of-sub-round resolution: single Ronda, 2/3-Ronda highest-wins-with-tie-cancels, 4-Ronda lowest-wins-with-cascading-tiebreak, Tringa-always-beats-Ronda +1 bonus. Trickiest piece of the ruleset — re-read GDD 2.9 before modifying.
+- `round.ts` — butin counting, last-capture bonus/malus (Roi +5 / As gives 5 to opponent), lead rotation ("to the right" = seat (N+3)%4, seats numbered clockwise 0-3).
 
-`server/src/rooms/RondaRoom.ts` is the only place that wires this logic to the network: it holds per-connection `Client` references, deals cards, broadcasts the public Colyseus schema state, and sends each player their own hand via a private message (`yourHand`) — hands are deliberately **not** part of the synced `RondaRoomState` so opponents' cards are never serialized to a client that shouldn't see them. Ronda/Tringa announcements are similarly exposed only as an anonymous badge (`AnnouncementBadgeSchema`, just a `playerId`) until the sub-round resolves — the server holds the real `Announcement[]` values privately and only broadcasts the reveal at sub-round end.
+`server/src/net/` wires this to the network:
+- `protocol.ts` — the complete JSON message contract (ClientMessage / ServerMessage / PublicState). **`app/lib/models/protocol.dart` mirrors these shapes by hand — any change here must be replicated there.**
+- `GameRoom.ts` — one game: lobby (host starts, explicit team choice), 3 sub-round deals (4-3-3) per round, turn validation, scoring. Takes a `PlayerConnection` interface (just `send()`), so tests drive it with fakes. Key rule detail implemented here: a chained Derba *cancels the previous tier's points* (which always belong to the opposing team since turns alternate A/B/A/B) before adding its own; and the win check runs after *every* point application, because reaching 41 ends the game immediately mid-round (GDD 2.1).
+- `RoomManager.ts` / `roomCode.ts` — code → room map; 5-char codes from a no-ambiguity alphabet (no 0/O/1/I/L).
+- `server.ts` exports `createGameServer()` (used by tests); `index.ts` is the thin entry point.
 
-The server is authoritative by design (no accounts to ban cheaters, so the client cannot be trusted): all capture/Derba/scoring decisions happen in `RondaRoom`/`game/*`, the client only sends intents (`playCard`, `joinTeam`, `startGame`) and receives resulting state.
+Hands are **never** in the broadcast public state — each player gets a private `yourHand` message. Announcements are exposed pre-reveal only as a boolean badge (`hasAnnouncement`), never value or kind (GDD 2.5).
 
-**Module system note**: the server is ESM (`"type": "module"` in package.json) because Colyseus 0.17 ships pure ESM. `tsconfig.json` uses `module`/`moduleResolution: node16`, which means **every relative import must include an explicit `.js` extension** even though the source files are `.ts` (e.g. `import { Table } from "./table.js"`) — this is required for the compiled output to resolve correctly under Node's ESM loader. Don't switch this to `bundler` resolution to avoid writing extensions; that would silently break `dist/` at runtime since `tsc` doesn't rewrite import paths.
+No reconnection in v1 (GDD 3.1): any disconnect/leave outside the lobby broadcasts `gameAbandoned` and kills the room.
 
-No reconnection handling in v1 (deliberate scope cut, see GDD 3.1): any disconnect or leave mid-round aborts the whole game for all players (`onLeave` broadcasts `gameAbandoned` and disconnects everyone once `phase !== "lobby"`).
+**Module system**: server is ESM (`"type": "module"`, tsconfig `module: node16`). **Every relative import needs an explicit `.js` extension** even in `.ts` source, or the compiled `dist/` breaks under Node's ESM loader. Don't switch to `bundler` resolution to avoid the extensions — tsc doesn't rewrite import paths.
 
-### Room lifecycle (`RondaRoom`)
-`lobby → dealing/playing → reveal → roundEnd → (loop back to dealing, or → gameOver)`. Each round is 3 sub-rounds (4-3-3 card deals). `dealNext()` re-detects announcements and re-sends private hands after every deal. `endSubRound()` resolves Ronda/Tringa and either deals the next sub-round or calls `endRound()`, which sweeps remaining table cards to the last capturing team, computes butin + last-capture bonus, and either loops into a new round or ends the game at `TARGET_SCORE` (41).
+### App: thin client over the server state
 
-Room codes are 5 characters from a disambiguated alphabet (no 0/O/1/I/L, see `rooms/roomCode.ts`), created via `POST /rooms` before the client opens the Colyseus websocket connection with that code.
-
-### App: not yet implemented beyond `flutter create` scaffold
-
-`app/lib/main.dart` is still the default Flutter counter template. No game screens, no Colyseus client wiring, no state management choice made yet. Per GDD.md section 4, UI/animation implementation (lobby, table, Derba/Missa animations, Moroccan-themed visual design) is planned to be built with Fable 5 rather than in a Sonnet session — check with the user before writing substantial `app/` UI code in a non-Fable session.
+- `lib/models/protocol.dart` — hand-written Dart mirrors of the server protocol (see sync warning above). `GameEvent` is a **sealed class** — you can't subclass it outside that file; game_screen models sub-phases (e.g. Derba-then-Missa on one capture) with local state flags instead.
+- `lib/net/game_client.dart` — `GameClient extends ChangeNotifier`, provided once at app root. Holds connection, `PublicState state`, private `hand`, and a broadcast `Stream<GameEvent> events` for one-shot events (captures, reveals, game over). Continuous state → `notifyListeners`; punctual events → the stream. `playCard` removes the card locally right away for responsiveness; server re-sends the full hand at each deal.
+- `lib/screens/` — home (nickname + create/join) → lobby (team columns, tap-to-copy code) → game → victory. Lobby navigates to game when phase flips to `playing`; game navigates to victory when the `GameOverEvent` finishes its overlay queue.
+- `lib/screens/game_screen.dart` — seats drawn relative to the local player (me bottom, teammate top, next clockwise player right). Server events are queued and played **one at a time as short blocking overlays** (input ignored while one is showing — GDD 3.4: 1-2s pauses for impact). Ordinary captures (no Derba/Missa) don't block.
+- `lib/widgets/event_overlays.dart` — the Derba tier-1/2/3 escalation, Missa ripple, reveal and round-end panels, with all durations as top-level constants.
+- `lib/widgets/playing_card.dart` + `lib/theme.dart` — cards, suit symbols, zellige background are all drawn procedurally with CustomPainter; **there are no image assets in the project**.
 
 ## Working with the ruleset
 
-When a rule question comes up that GDD.md doesn't unambiguously answer, don't guess — the traditional/oral nature of this game variant means several corner cases were explicitly interviewed and resolved with the user (see GDD.md section "Historique des décisions"). Treat GDD.md as authoritative over intuition about how similar card games (Scopa, Belote) usually work — several rules here deliberately diverge (e.g. capture is never forced, even when possible).
+When a rule question comes up that GDD.md doesn't unambiguously answer, don't guess — the traditional/oral nature of this game variant means corner cases were explicitly interviewed and resolved with the user (see GDD.md "Historique des décisions"). Treat GDD.md as authoritative over intuition about similar card games (Scopa, Belote) — several rules here deliberately diverge (e.g. capture is never forced, even when possible).

@@ -30,7 +30,6 @@ export interface PlayerState {
   seat: PlayerSeat;
   team: TeamId;
   hand: Card[];
-  connected: boolean;
 }
 
 export type DerbaTier = 0 | 1 | 2 | 3; // 0 = aucune, 1 = 1pt, 2 = 5pts (surenchère), 3 = 10pts (max)

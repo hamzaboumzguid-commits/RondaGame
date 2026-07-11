@@ -22,7 +22,7 @@ export class Table {
    * @param targetRank si fourni et présent sur la table, capture cette valeur (+ suite continue).
    *                   si omis ou absent de la table, la carte est simplement posée.
    */
-  play(player: PlayerState, card: Card, opts: { capture: boolean }): CaptureEvent | null {
+  play(player: Pick<PlayerState, "id" | "team">, card: Card, opts: { capture: boolean }): CaptureEvent | null {
     if (!opts.capture || !this.pile.some((c) => c.rank === card.rank)) {
       this.pile.push(card);
       this.lastCapture = null; // pose = rompt toute chaîne de Derba en cours
