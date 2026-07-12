@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../models/protocol.dart';
 import '../net/game_client.dart';
 import '../theme.dart';
+import '../widgets/chunky_button.dart';
 import 'game_screen.dart';
 
 /// Lobby : code de room partageable, choix d'équipe explicite (GDD 3.1),
@@ -85,28 +86,39 @@ class _LobbyScreenState extends State<LobbyScreen> {
         if (!didPop) _leave();
       },
       child: Scaffold(
-        body: ZelligeBackground(
+        body: IllustratedBackground(
+          asset: 'assets/ui/game_bg.png',
+          dim: 0.12,
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
                   Row(
                     children: [
-                      IconButton(
-                        onPressed: _leave,
-                        icon: const Icon(Icons.arrow_back, color: RondaColors.creamDark),
-                      ),
+                      _RoundIconButton(icon: Icons.arrow_back_rounded, onTap: _leave),
                       const Spacer(),
-                      Text(
-                        '${state.players.length}/4 joueurs',
-                        style: const TextStyle(color: RondaColors.creamDark, fontSize: 16),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: RondaColors.gold.withValues(alpha: 0.5)),
+                        ),
+                        child: Text(
+                          '${state.players.length}/4 joueurs',
+                          style: const TextStyle(
+                            color: RondaColors.cream,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 14),
 
-                  // Code de la room, tap pour copier.
+                  // Code de la room, tap pour copier — panneau bois clair.
                   GestureDetector(
                     onTap: () {
                       Clipboard.setData(ClipboardData(text: state.roomCode));
@@ -118,49 +130,45 @@ class _LobbyScreenState extends State<LobbyScreen> {
                         ),
                       );
                     },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                      decoration: BoxDecoration(
-                        color: RondaColors.woodLight,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: RondaColors.gold, width: 2),
-                      ),
+                    child: ChunkyPanel(
+                      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
                       child: Column(
                         children: [
                           const Text(
-                            'CODE DE LA PARTIE',
+                            'CODE DE LA PARTIE — TAPE POUR COPIER',
                             style: TextStyle(
-                              fontSize: 11,
-                              letterSpacing: 2,
-                              color: RondaColors.creamDark,
+                              fontSize: 10,
+                              letterSpacing: 1.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF6B4A26),
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 2),
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
                                 state.roomCode,
                                 style: const TextStyle(
-                                  fontSize: 36,
+                                  fontSize: 38,
                                   fontWeight: FontWeight.w900,
-                                  letterSpacing: 10,
-                                  color: RondaColors.gold,
+                                  letterSpacing: 9,
+                                  color: Color(0xFF4A2E15),
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              const Icon(Icons.copy, color: RondaColors.creamDark, size: 20),
+                              const Icon(Icons.copy_rounded, color: Color(0xFF8A6238), size: 22),
                             ],
                           ),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 22),
 
                   Expanded(
                     child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Expanded(
                           child: _TeamColumn(
@@ -170,7 +178,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                             onJoin: () => client.joinTeam('A'),
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 14),
                         Expanded(
                           child: _TeamColumn(
                             team: 'B',
@@ -182,21 +190,24 @@ class _LobbyScreenState extends State<LobbyScreen> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 18),
 
                   if (client.isHost)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: isFull ? client.startGame : null,
-                        child: Text(isFull ? 'LANCER LA PARTIE' : 'EN ATTENTE DE JOUEURS...'),
-                      ),
+                    ChunkyButton.red(
+                      label: isFull ? 'LANCER LA PARTIE' : 'EN ATTENTE...',
+                      icon: isFull ? Icons.play_arrow_rounded : Icons.hourglass_top_rounded,
+                      onPressed: isFull ? client.startGame : null,
                     )
                   else
-                    const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: Text(
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Text(
                         "En attente du lancement par l'hôte...",
-                        style: TextStyle(color: RondaColors.creamDark),
+                        style: TextStyle(color: RondaColors.creamDark, fontSize: 15),
                       ),
                     ),
                 ],
@@ -204,6 +215,41 @@ class _LobbyScreenState extends State<LobbyScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RoundIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _RoundIconButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFF4E3BC), Color(0xFFDDC08A)],
+          ),
+          border: Border.all(color: const Color(0xFF3A2417), width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 4,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Icon(icon, color: const Color(0xFF4A2E15), size: 22),
       ),
     );
   }
@@ -225,30 +271,43 @@ class _TeamColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = RondaColors.team(team);
+    final light = RondaColors.teamLight(team);
     final iAmInTeam = players.any((p) => p.id == myId);
     final isFull = players.length >= 2;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color, width: 1.5),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [color.withValues(alpha: 0.85), color.withValues(alpha: 0.55)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF3A2417), width: 2.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 6,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         children: [
           Text(
             'ÉQUIPE $team',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
               letterSpacing: 2,
-              color: RondaColors.teamLight(team),
+              color: RondaColors.cream,
+              shadows: [Shadow(color: Colors.black38, blurRadius: 3, offset: Offset(0, 1))],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           for (final player in players) ...[
-            _PlayerChip(player: player, isMe: player.id == myId, color: color),
+            _PlayerChip(player: player, isMe: player.id == myId),
             const SizedBox(height: 8),
           ],
           for (int i = players.length; i < 2; i++) ...[
@@ -257,13 +316,12 @@ class _TeamColumn extends StatelessWidget {
           ],
           const Spacer(),
           if (!iAmInTeam)
-            OutlinedButton(
+            ChunkyButton(
+              label: 'REJOINDRE',
+              height: 46,
+              fontSize: 14,
+              color: light,
               onPressed: isFull ? null : onJoin,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: RondaColors.teamLight(team),
-                side: BorderSide(color: color),
-              ),
-              child: const Text('Rejoindre'),
             ),
         ],
       ),
@@ -274,36 +332,55 @@ class _TeamColumn extends StatelessWidget {
 class _PlayerChip extends StatelessWidget {
   final PublicPlayer player;
   final bool isMe;
-  final Color color;
 
-  const _PlayerChip({required this.player, required this.isMe, required this.color});
+  const _PlayerChip({required this.player, required this.isMe});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: RondaColors.wood.withValues(alpha: 0.55),
+        color: const Color(0xFFFFF6E0),
         borderRadius: BorderRadius.circular(12),
-        border: isMe ? Border.all(color: RondaColors.gold, width: 1.5) : null,
+        border: Border.all(
+          color: isMe ? RondaColors.gold : const Color(0xFF3A2417),
+          width: isMe ? 2.5 : 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          if (player.isHost) ...[
-            const Icon(Icons.star, color: RondaColors.gold, size: 16),
-            const SizedBox(width: 6),
-          ],
+          CircleAvatar(
+            radius: 12,
+            backgroundColor: const Color(0xFF4A2E15),
+            child: Text(
+              player.nickname.isEmpty ? '?' : player.nickname[0].toUpperCase(),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFFFFF6E0),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               isMe ? '${player.nickname} (toi)' : player.nickname,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
-                color: RondaColors.cream,
+                fontWeight: isMe ? FontWeight.w900 : FontWeight.w600,
+                color: const Color(0xFF4A2E15),
               ),
             ),
           ),
+          if (player.isHost) const Icon(Icons.star_rounded, color: Color(0xFFE0A32B), size: 18),
         ],
       ),
     );
@@ -317,17 +394,26 @@ class _EmptySlot extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: RondaColors.creamDark.withValues(alpha: 0.25)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.2),
       ),
-      child: Text(
-        'Place libre',
-        style: TextStyle(
-          color: RondaColors.creamDark.withValues(alpha: 0.5),
-          fontStyle: FontStyle.italic,
-        ),
+      child: Row(
+        children: [
+          Icon(Icons.person_add_alt_rounded,
+              size: 18, color: Colors.white.withValues(alpha: 0.55)),
+          const SizedBox(width: 8),
+          Text(
+            'Place libre',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.65),
+              fontStyle: FontStyle.italic,
+              fontSize: 13,
+            ),
+          ),
+        ],
       ),
     );
   }

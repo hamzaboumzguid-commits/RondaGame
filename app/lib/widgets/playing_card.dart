@@ -100,9 +100,17 @@ class PlayingCardWidget extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(width * 0.10),
-        child: CustomPaint(
-          size: Size(width, height),
-          painter: SpanishCardPainter(card),
+        // Illustration générée ; repli sur le rendu procédural si absente.
+        child: Image.asset(
+          'assets/cards/${card.suit}_${card.rank}.png',
+          width: width,
+          height: height,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, e, s) => CustomPaint(
+            size: Size(width, height),
+            painter: SpanishCardPainter(card),
+          ),
         ),
       ),
     );
@@ -735,9 +743,16 @@ class CardBackWidget extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(width * 0.10),
-        child: CustomPaint(
-          size: Size(width, height),
-          painter: _CardBackPainter(),
+        child: Image.asset(
+          'assets/ui/card_back.png',
+          width: width,
+          height: height,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, e, s) => CustomPaint(
+            size: Size(width, height),
+            painter: _CardBackPainter(),
+          ),
         ),
       ),
     );

@@ -76,6 +76,39 @@ ThemeData buildRondaTheme() {
   );
 }
 
+/// Fond illustré plein écran (assets générés) avec repli sur le zellige
+/// procédural si l'image manque.
+class IllustratedBackground extends StatelessWidget {
+  final String asset; // ex. 'assets/ui/home_bg.png'
+  final Widget child;
+  /// Assombrissement optionnel pour la lisibilité du contenu par-dessus.
+  final double dim;
+
+  const IllustratedBackground({
+    super.key,
+    required this.asset,
+    required this.child,
+    this.dim = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.asset(
+          asset,
+          fit: BoxFit.cover,
+          errorBuilder: (_, e, s) =>
+              const ZelligeBackground(child: SizedBox.expand()),
+        ),
+        if (dim > 0) ColoredBox(color: Colors.black.withValues(alpha: dim)),
+        child,
+      ],
+    );
+  }
+}
+
 /// Fond zellige : étoiles à huit branches en quadrillage discret,
 /// peint procéduralement (aucun asset nécessaire).
 class ZelligeBackground extends StatelessWidget {

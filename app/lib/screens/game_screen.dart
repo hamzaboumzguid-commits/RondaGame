@@ -139,9 +139,8 @@ class _GameScreenState extends State<GameScreen> {
         if (quit == true && mounted) _exitToHome();
       },
       child: Scaffold(
-        body: ZelligeBackground(
-          baseColor: RondaColors.greenDeep,
-          patternColor: RondaColors.goldLight,
+        body: IllustratedBackground(
+          asset: 'assets/ui/game_bg.png',
           child: SafeArea(
             child: Stack(
               children: [
@@ -475,7 +474,29 @@ class _SeatBadge extends StatelessWidget {
       children: [
         Stack(
           clipBehavior: Clip.none,
+          alignment: Alignment.center,
           children: [
+            // Petit éventail de dos de cartes derrière l'avatar (façon Blazing 8),
+            // qui reflète le nombre de cartes restantes en main.
+            if (p.handCount > 0)
+              Positioned(
+                top: -14,
+                child: SizedBox(
+                  width: 70,
+                  height: 40,
+                  child: Stack(
+                    alignment: Alignment.topCenter,
+                    children: [
+                      for (var i = 0; i < p.handCount.clamp(0, 4); i++)
+                        Transform.rotate(
+                          angle: (i - (p.handCount.clamp(0, 4) - 1) / 2) * 0.28,
+                          alignment: Alignment.bottomCenter,
+                          child: const CardBackWidget(width: 22),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             avatar,
             if (isLead)
               const Positioned(
@@ -649,18 +670,13 @@ class _FeltTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Le fond illustré fournit déjà le tapis zellige encadré d'or :
+    // on ne pose qu'un léger voile pour détacher les cartes.
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       decoration: BoxDecoration(
-        gradient: const RadialGradient(
-          colors: [Color(0x8A2E8653), Color(0x8A164F31)],
-          radius: 1.1,
-        ),
+        color: Colors.black.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: RondaColors.gold.withValues(alpha: 0.35), width: 1.5),
-        boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 14, spreadRadius: -6),
-        ],
       ),
       child: cards.isEmpty
           ? Center(

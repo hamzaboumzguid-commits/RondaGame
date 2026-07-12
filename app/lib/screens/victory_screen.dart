@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../net/game_client.dart';
 import '../theme.dart';
+import '../widgets/chunky_button.dart';
 
 class VictoryScreen extends StatefulWidget {
   final String winningTeam;
@@ -39,8 +40,9 @@ class _VictoryScreenState extends State<VictoryScreen> with SingleTickerProvider
     final scores = client.state?.scores ?? {};
 
     return Scaffold(
-      body: ZelligeBackground(
-        baseColor: iWon ? RondaColors.greenDeep : RondaColors.wood,
+      body: IllustratedBackground(
+        asset: 'assets/ui/home_bg.png',
+        dim: iWon ? 0.25 : 0.55,
         child: SafeArea(
           child: Stack(
             children: [
@@ -57,42 +59,67 @@ class _VictoryScreenState extends State<VictoryScreen> with SingleTickerProvider
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      iWon ? Icons.emoji_events : Icons.sentiment_dissatisfied,
-                      size: 96,
-                      color: iWon ? RondaColors.gold : RondaColors.creamDark,
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: 1),
+                      duration: const Duration(milliseconds: 700),
+                      curve: Curves.elasticOut,
+                      builder: (_, t, child) => Transform.scale(scale: t, child: child),
+                      child: Icon(
+                        iWon ? Icons.emoji_events_rounded : Icons.sentiment_dissatisfied_rounded,
+                        size: 100,
+                        color: iWon ? RondaColors.gold : RondaColors.creamDark,
+                        shadows: const [Shadow(color: Colors.black54, blurRadius: 16)],
+                      ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 18),
                     Text(
                       iWon ? 'VICTOIRE !' : 'DÉFAITE',
                       style: TextStyle(
-                        fontSize: 48,
+                        fontSize: 52,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 6,
-                        color: iWon ? RondaColors.gold : RondaColors.creamDark,
+                        color: iWon ? RondaColors.goldLight : RondaColors.creamDark,
+                        shadows: const [
+                          Shadow(color: Colors.black87, blurRadius: 10, offset: Offset(0, 3)),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'L\'équipe ${widget.winningTeam} remporte la partie',
-                      style: const TextStyle(fontSize: 18, color: RondaColors.cream),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      '${scores['A'] ?? 0}  —  ${scores['B'] ?? 0}',
-                      style: const TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w800,
-                        color: RondaColors.cream,
+                    const SizedBox(height: 20),
+                    ChunkyPanel(
+                      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 14),
+                      child: Column(
+                        children: [
+                          Text(
+                            'L\'équipe ${widget.winningTeam} remporte la partie',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF4A2E15),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${scores['A'] ?? 0}  —  ${scores['B'] ?? 0}',
+                            style: const TextStyle(
+                              fontSize: 38,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF4A2E15),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 48),
-                    ElevatedButton(
-                      onPressed: () {
-                        context.read<GameClient>().leaveRoom();
-                        Navigator.of(context).popUntil((route) => route.isFirst);
-                      },
-                      child: const Text('RETOUR À L\'ACCUEIL'),
+                    const SizedBox(height: 42),
+                    SizedBox(
+                      width: 280,
+                      child: ChunkyButton.red(
+                        label: 'REJOUER',
+                        icon: Icons.replay_rounded,
+                        onPressed: () {
+                          context.read<GameClient>().leaveRoom();
+                          Navigator.of(context).popUntil((route) => route.isFirst);
+                        },
+                      ),
                     ),
                   ],
                 ),

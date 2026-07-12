@@ -6,10 +6,12 @@ import 'package:provider/provider.dart';
 
 import '../net/game_client.dart';
 import '../theme.dart';
+import '../widgets/chunky_button.dart';
 import 'lobby_screen.dart';
 
 /// Accueil : pseudo + créer une partie ou rejoindre avec un code,
 /// façon Among Us — aucune inscription (GDD 3.1).
+/// Le logo RONDA fait partie de l'illustration de fond générée.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -111,109 +113,166 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: ZelligeBackground(
+      body: IllustratedBackground(
+        asset: 'assets/ui/home_bg.png',
         child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Titre
-                  Text(
-                    'RONDA',
-                    style: TextStyle(
-                      fontSize: 56,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 12,
-                      color: RondaColors.gold,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'الروندة المغربية',
-                    style: TextStyle(fontSize: 18, color: RondaColors.creamDark),
-                  ),
-                  const SizedBox(height: 48),
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
+                  maxWidth: 420,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // Le tiers supérieur laisse respirer le logo peint dans le fond.
+                    SizedBox(height: constraints.maxHeight * 0.34),
 
-                  TextField(
-                    controller: _nicknameController,
-                    maxLength: 20,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 18),
-                    decoration: const InputDecoration(
-                      labelText: 'Ton pseudo',
-                      counterText: '',
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _busy ? null : _createRoom,
-                      child: _busy
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('CRÉER UNE PARTIE'),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  Row(
-                    children: [
-                      Expanded(child: Divider(color: RondaColors.gold.withValues(alpha: 0.3))),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        child: Text('ou', style: TextStyle(color: RondaColors.creamDark)),
+                    ChunkyPanel(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'TON PSEUDO',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 2,
+                              color: Color(0xFF6B4A26),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _ParchmentField(
+                            controller: _nicknameController,
+                            hint: 'Ex. Hamza',
+                            maxLength: 20,
+                            fontSize: 18,
+                          ),
+                        ],
                       ),
-                      Expanded(child: Divider(color: RondaColors.gold.withValues(alpha: 0.3))),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
+                    ),
+                    const SizedBox(height: 18),
 
-                  TextField(
-                    controller: _codeController,
-                    maxLength: 5,
-                    textAlign: TextAlign.center,
-                    textCapitalization: TextCapitalization.characters,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
-                      UpperCaseTextFormatter(),
-                    ],
-                    style: const TextStyle(
-                      fontSize: 24,
-                      letterSpacing: 8,
-                      fontWeight: FontWeight.bold,
+                    ChunkyButton.red(
+                      label: 'CRÉER UNE PARTIE',
+                      icon: Icons.play_arrow_rounded,
+                      onPressed: _busy ? null : _createRoom,
                     ),
-                    decoration: const InputDecoration(
-                      labelText: 'Code de la partie',
-                      counterText: '',
-                      hintText: 'ABCDE',
+                    const SizedBox(height: 22),
+
+                    ChunkyPanel(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'REJOINDRE AVEC UN CODE',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 2,
+                              color: Color(0xFF6B4A26),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _ParchmentField(
+                            controller: _codeController,
+                            hint: 'ABCDE',
+                            maxLength: 5,
+                            fontSize: 24,
+                            letterSpacing: 8,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                              UpperCaseTextFormatter(),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          ChunkyButton.green(
+                            label: 'REJOINDRE',
+                            icon: Icons.group_rounded,
+                            height: 54,
+                            fontSize: 18,
+                            onPressed: _busy ? null : _joinRoom,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: _busy ? null : _joinRoom,
-                      child: const Text('REJOINDRE'),
-                    ),
-                  ),
-                ],
+                    const SizedBox(height: 26),
+                    if (_busy)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 12),
+                        child: CircularProgressIndicator(color: RondaColors.goldLight),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Champ de saisie « parchemin » : fond crème creusé, contour brun.
+class _ParchmentField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hint;
+  final int maxLength;
+  final double fontSize;
+  final double letterSpacing;
+  final List<TextInputFormatter>? inputFormatters;
+
+  const _ParchmentField({
+    required this.controller,
+    required this.hint,
+    required this.maxLength,
+    required this.fontSize,
+    this.letterSpacing = 0.5,
+    this.inputFormatters,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF6E0),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF8A6238), width: 2),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 3,
+            offset: Offset(0, 2),
+            blurStyle: BlurStyle.inner,
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        maxLength: maxLength,
+        textAlign: TextAlign.center,
+        textCapitalization: TextCapitalization.characters,
+        inputFormatters: inputFormatters,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w800,
+          letterSpacing: letterSpacing,
+          color: const Color(0xFF4A2E15),
+        ),
+        decoration: InputDecoration(
+          counterText: '',
+          hintText: hint,
+          hintStyle: TextStyle(
+            color: const Color(0xFF4A2E15).withValues(alpha: 0.35),
+            fontWeight: FontWeight.w600,
+          ),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          filled: false,
+          contentPadding: const EdgeInsets.symmetric(vertical: 10),
         ),
       ),
     );
