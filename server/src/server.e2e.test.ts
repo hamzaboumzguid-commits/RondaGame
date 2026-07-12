@@ -125,4 +125,38 @@ describe("E2E websocket", () => {
 
     for (const c of all) c.close();
   });
+
+  it("liste des salons publics : visible si isPublic, invisible sinon ou une fois plein", async () => {
+    const host = new TestClient();
+    await host.connect(port);
+    host.send({ type: "create", nickname: "HostPublic", mode: "1v1", isPublic: true });
+    const joined = await host.waitFor("joined");
+
+    const privateHost = new TestClient();
+    await privateHost.connect(port);
+    privateHost.send({ type: "create", nickname: "HostPrive", mode: "1v1" });
+    await privateHost.waitFor("joined");
+
+    const viewer = new TestClient();
+    await viewer.connect(port);
+    viewer.send({ type: "listPublicRooms" });
+    const list1 = await viewer.waitFor("publicRooms");
+    expect(list1.rooms.some((r) => r.roomCode === joined.roomCode)).toBe(true);
+    expect(list1.rooms.some((r) => r.hostNickname === "HostPrive")).toBe(false);
+
+    // La room publique se remplit (1v1) -> disparaît de la liste.
+    const guest = new TestClient();
+    await guest.connect(port);
+    guest.send({ type: "join", roomCode: joined.roomCode, nickname: "Invité" });
+    await guest.waitFor("joined");
+
+    viewer.send({ type: "listPublicRooms" });
+    const list2 = await viewer.waitForMatch(
+      (m) => m.type === "publicRooms" && !m.rooms.some((r) => r.roomCode === joined.roomCode),
+      "liste sans la room pleine",
+    );
+    expect((list2 as Extract<ServerMessage, { type: "publicRooms" }>).rooms).toHaveLength(0);
+
+    for (const c of [host, privateHost, viewer, guest]) c.close();
+  });
 });

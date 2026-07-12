@@ -48,7 +48,7 @@ export function createGameServer(): GameServer {
       switch (msg.type) {
         case "create": {
           if (room) return;
-          room = manager.createRoom(msg.mode === "1v1" ? "1v1" : "2v2");
+          room = manager.createRoom(msg.mode === "1v1" ? "1v1" : "2v2", msg.isPublic === true);
           const res = room.join(playerId, msg.nickname, conn);
           if (res.ok) {
             conn.send({ type: "joined", roomCode: room.roomCode, playerId, state: room.publicState() });
@@ -79,6 +79,9 @@ export function createGameServer(): GameServer {
           break;
         case "playCard":
           room?.playCard(playerId, msg.cardId);
+          break;
+        case "listPublicRooms":
+          conn.send({ type: "publicRooms", rooms: manager.listPublicRooms() });
           break;
       }
     });

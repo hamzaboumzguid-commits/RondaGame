@@ -10,7 +10,7 @@ import {
   TARGET_SCORE,
   TeamId,
 } from "../game/types.js";
-import { PublicState, ServerMessage, RevealedAnnouncement } from "./protocol.js";
+import { PublicRoomSummary, PublicState, ServerMessage, RevealedAnnouncement } from "./protocol.js";
 
 /** Temps de réflexion par tour : passé ce délai, la carte la plus à gauche est jouée d'office. */
 export const TURN_TIMEOUT_MS = 10_000;
@@ -47,6 +47,8 @@ export type RoomPhase = "lobby" | "playing" | "reveal" | "roundEnd" | "gameOver"
 export class GameRoom {
   readonly roomCode: string;
   readonly mode: GameMode;
+  /** Visible dans la liste des salons publics de l'accueil tant que le lobby n'est pas plein/lancé. */
+  readonly isPublic: boolean;
   phase: RoomPhase = "lobby";
 
   private players: RoomPlayer[] = [];
@@ -61,6 +63,12 @@ export class GameRoom {
   private announcements: Announcement[] = [];
   private capturedByTeam: Record<TeamId, Card[]> = { A: [], B: [] };
   private lastCapture: { card: Card; team: TeamId; playerId: string } | null = null;
+  /**
+   * La TOUTE dernière carte jouée de la manche et si elle a capturé (GDD 2.11) :
+   * le bonus Roi/As ne concerne QUE ce dernier coup, et seulement s'il capture.
+   * Une simple pose en dernier coup ne déclenche aucun bonus.
+   */
+  private finalPlay: { card: Card; team: TeamId; playerId: string; captured: boolean } | null = null;
   private scores: Record<TeamId, number> = { A: 0, B: 0 };
   private winningTeam: TeamId | "" = "";
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
@@ -69,9 +77,10 @@ export class GameRoom {
   /** Appelé quand la room doit être détruite (partie finie ou abandonnée). */
   onDispose: () => void = () => {};
 
-  constructor(roomCode: string, mode: GameMode = "2v2") {
+  constructor(roomCode: string, mode: GameMode = "2v2", isPublic: boolean = false) {
     this.roomCode = roomCode;
     this.mode = mode;
+    this.isPublic = isPublic;
   }
 
   private get maxPlayers(): number {
@@ -175,6 +184,7 @@ export class GameRoom {
     this.table.reset();
     this.capturedByTeam = { A: [], B: [] };
     this.lastCapture = null;
+    this.finalPlay = null;
     this.dealIndex = 0;
     this.dealNext();
   }
@@ -263,6 +273,7 @@ export class GameRoom {
       }
       this.capturedByTeam[event.byTeam].push(...event.cardsCaptured);
       this.lastCapture = { card: event.playedCard, team: event.byTeam, playerId: event.byPlayerId };
+      this.finalPlay = { card: event.playedCard, team: event.byTeam, playerId: event.byPlayerId, captured: true };
 
       const points = DERBA_POINTS[event.derbaTier] + (event.isMissa ? 1 : 0);
       // Une nouvelle Derba en chaîne annule les points de la précédente (GDD 2.7) :
@@ -290,6 +301,9 @@ export class GameRoom {
 
       if (this.checkImmediateWin()) return;
     } else {
+      // Simple pose : c'est le dernier coup potentiel, mais SANS capture ->
+      // aucun bonus Roi/As si c'est le tout dernier coup de la manche (GDD 2.11).
+      this.finalPlay = { card, team: player.team, playerId: id, captured: false };
       this.broadcast({ type: "cardPlaced", playerId: id, card });
     }
 
@@ -342,31 +356,43 @@ export class GameRoom {
   }
 
   private endRound(): void {
-    // Les cartes restantes vont à l'équipe du dernier joueur ayant capturé (GDD 2.10).
+    // GDD 2.10 vs 2.11 — deux notions de « dernier » distinctes, à ne PAS fusionner :
+    //  • `lastCapture` = dernière capture RÉELLEMENT effectuée (peut être antérieure
+    //    au tout dernier coup) -> à qui vont les cartes restantes sur la table.
+    //  • `finalPlay`   = tout dernier coup joué de la manche -> bonus Roi/As, et
+    //    seulement s'il capture. Les deux ne coïncident que si ce dernier coup capture.
     const remaining = this.table.sweepRemaining();
     if (remaining.length > 0 && this.lastCapture) {
       this.capturedByTeam[this.lastCapture.team].push(...remaining);
     }
 
     const butinPoints = computeButin(this.capturedByTeam);
-    const bonusPoints = this.lastCapture
-      ? computeLastCaptureBonus(this.lastCapture.card, this.lastCapture.team)
-      : {};
+    // Le bonus Roi/As ne concerne QUE le tout dernier coup, et seulement s'il
+    // a capturé (GDD 2.11) — une pose finale ne donne aucun bonus.
+    const bonusPoints =
+      this.finalPlay && this.finalPlay.captured
+        ? computeLastCaptureBonus(this.finalPlay.card, this.finalPlay.team)
+        : {};
+
+    // GDD 2.11 : le Lead est censé conclure. « S'il n'a pas réalisé la dernière
+    // capture (dernier coup non capturant, OU capturé par un autre) » -> MAJEBTICH.
+    // Un dernier coup non capturant du Lead lui-même compte donc bien comme raté.
+    const leadId = this.players.find((p) => p.seat === this.leadSeat)?.id ?? "";
+    const leadMissedLastCapture =
+      this.finalPlay !== null &&
+      !(this.finalPlay.captured && this.finalPlay.playerId === leadId);
 
     this.broadcast({
       type: "roundEnd",
       butinPoints,
       bonusPoints,
       cardCounts: { A: this.capturedByTeam.A.length, B: this.capturedByTeam.B.length },
-      // Pour les animations Roi (+5) / As (5 à l'adverse) de dernière capture.
-      lastCapture: this.lastCapture
-        ? { rank: this.lastCapture.card.rank, team: this.lastCapture.team }
-        : null,
-      // Le Lead est censé conclure (GDD 2.2) : s'il rate la dernière prise,
-      // le client joue l'animation MAJEBTICH 9A3TEK.
-      leadMissedLastCapture:
-        this.lastCapture !== null &&
-        this.lastCapture.playerId !== (this.players.find((p) => p.seat === this.leadSeat)?.id ?? ""),
+      // Animations Roi (+5) / As (5 à l'adverse) : seulement si le dernier coup capture.
+      lastCapture:
+        this.finalPlay && this.finalPlay.captured
+          ? { rank: this.finalPlay.card.rank, team: this.finalPlay.team }
+          : null,
+      leadMissedLastCapture,
     });
 
     // Butin appliqué avant le bonus de dernière capture ; le premier à franchir 41 gagne.
@@ -456,6 +482,8 @@ export class GameRoom {
       tablePile: [...this.table.pile],
       // Paquet de Derba en attente de surenchère, affiché sur la table (GDD 2.7).
       pendingDerba: this.phase === "playing" ? this.table.pendingChainCards : [],
+      pendingDerbaRank:
+        this.phase === "playing" ? this.table.pendingChainRank ?? 0 : 0,
       leadPlayerId: this.players.find((p) => p.seat === this.leadSeat)?.id ?? "",
       currentTurnPlayerId: this.phase === "playing" ? this.currentPlayer()?.id ?? "" : "",
       turnEndsAt: this.phase === "playing" ? this.turnEndsAt : 0,
@@ -482,5 +510,16 @@ export class GameRoom {
 
   get playerCount(): number {
     return this.players.length;
+  }
+
+  /** Résumé affiché dans la liste des salons publics — uniquement pertinent tant qu'on est en lobby. */
+  summary(): PublicRoomSummary {
+    return {
+      roomCode: this.roomCode,
+      mode: this.mode,
+      playerCount: this.players.length,
+      maxPlayers: this.maxPlayers,
+      hostNickname: this.players.find((p) => p.id === this.hostId)?.nickname ?? "",
+    };
   }
 }

@@ -32,6 +32,16 @@ export class Table {
   }
 
   /**
+   * Valeur qui, jouée maintenant, surenchérit la Derba en attente (GDD 2.7).
+   * SEULE cette valeur reprend le paquet — jouer un rang qui se trouve dans le
+   * paquet (ex. le 7 d'une suite 6-7-8 dérbée sur le 6) ne capture rien, la
+   * carte est simplement posée. null quand aucune chaîne n'est en cours.
+   */
+  get pendingChainRank(): Card["rank"] | null {
+    return this.derbaChain ? this.derbaChain.rank : null;
+  }
+
+  /**
    * Valeur de la carte POSÉE au coup précédent (null si le coup précédent était
    * une capture). Une Derba capture « la carte que l'adversaire vient de poser »
    * (GDD 2.7) — capturer une carte plus ancienne n'est pas une Derba.

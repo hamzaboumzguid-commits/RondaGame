@@ -22,11 +22,16 @@ class LobbyScreen extends StatefulWidget {
 class _LobbyScreenState extends State<LobbyScreen> {
   StreamSubscription<GameEvent>? _eventSub;
   bool _navigatedToGame = false;
+  // Référence sauvegardée : lire context.read() dans dispose() est interdit
+  // (l'élément est déjà désactivé -> assertion « deactivated widget's ancestor »,
+  // le carré rouge qui flashait au passage lobby -> jeu pendant la distribution).
+  GameClient? _client;
 
   @override
   void initState() {
     super.initState();
     final client = context.read<GameClient>();
+    _client = client;
     _eventSub = client.events.listen(_onEvent);
     client.addListener(_onStateChanged);
   }
@@ -34,12 +39,14 @@ class _LobbyScreenState extends State<LobbyScreen> {
   @override
   void dispose() {
     _eventSub?.cancel();
-    context.read<GameClient>().removeListener(_onStateChanged);
+    _client?.removeListener(_onStateChanged);
     super.dispose();
   }
 
   void _onStateChanged() {
-    final client = context.read<GameClient>();
+    if (!mounted) return;
+    final client = _client;
+    if (client == null) return;
     if (!_navigatedToGame && client.state?.phase == 'playing') {
       _navigatedToGame = true;
       Navigator.of(context).pushReplacement(

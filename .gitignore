@@ -1,0 +1,38 @@
+# Outillage local Claude Code / tâches planifiées
+.claude/
+
+# Captures de référence / images de travail à la racine (non versionnées)
+/*.png
+
+# --- Node / serveur ---
+node_modules/
+server/dist/
+*.log
+.env
+.env.*
+
+# --- Flutter / app ---
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/build/
+app/.packages
+app/pubspec.lock
+
+# Artefacts de plateforme (générés)
+app/android/.gradle/
+app/android/app/debug/
+app/android/app/profile/
+app/android/app/release/
+app/ios/Flutter/Flutter.framework
+app/ios/Flutter/Flutter.podspec
+app/ios/Pods/
+
+# Secrets de signature Android — NE JAMAIS COMMITER
+*.keystore
+*.jks
+app/android/key.properties
+
+# OS
+.DS_Store
+Thumbs.db

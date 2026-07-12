@@ -85,6 +85,29 @@ describe("GameRoom — lobby", () => {
     expect(p0.messagesOfType("error").some((e) => e.code === "notFull")).toBe(true);
     expect(room.phase).toBe("lobby");
   });
+
+  it("transfère l'hôte au joueur suivant quand l'hôte quitte le lobby", () => {
+    const room = new GameRoom("TEST4");
+    const p0 = new FakePlayer("p0");
+    const p1 = new FakePlayer("p1");
+    room.join(p0.id, "P0", p0); // hôte
+    room.join(p1.id, "P1", p1);
+
+    room.leave(p0.id);
+    const state = p1.lastState!;
+    expect(state.players.find((p) => p.id === "p1")?.isHost).toBe(true);
+
+    // Le nouvel hôte peut désormais lancer (une fois la table complète : p0 est
+    // parti, il faut donc 2 joueurs de plus pour retrouver les 4 requis).
+    const p2 = new FakePlayer("p2");
+    const p3 = new FakePlayer("p3");
+    const p4 = new FakePlayer("p4");
+    room.join(p2.id, "P2", p2);
+    room.join(p3.id, "P3", p3);
+    room.join(p4.id, "P4", p4);
+    room.start(p1.id);
+    expect(room.phase).toBe("playing");
+  });
 });
 
 function playUntilGameOver(room: GameRoom, players: FakePlayer[], maxTurns = 5000): void {
@@ -205,6 +228,38 @@ describe("GameRoom — partie complète", () => {
       room.start("p0");
       playUntilGameOver(room, players);
       expect(room.phase).toBe("gameOver");
+    }
+  });
+
+  it("bonus Roi/As : invariants sur le dernier coup (GDD 2.11), sur 40 parties", () => {
+    for (let i = 0; i < 40; i++) {
+      const { room, players } = setupFullRoom();
+      room.start("p0");
+      playUntilGameOver(room, players);
+
+      for (const end of players[0].messagesOfType("roundEnd")) {
+        // Le bonus n'existe QUE si le dernier coup a capturé un Roi ou un As.
+        // (lastCapture peut avoir n'importe quel rang : il sert aussi à afficher
+        // quelle équipe a conclu ; seuls 12/1 déclenchent des points de bonus.)
+        const bonusTeams = Object.keys(end.bonusPoints);
+        if (bonusTeams.length > 0) {
+          expect(end.lastCapture).not.toBeNull();
+          expect([1, 12]).toContain(end.lastCapture!.rank);
+          expect(Object.values(end.bonusPoints).some((v) => v === 5)).toBe(true);
+          // Roi -> +5 à l'équipe qui capture ; As -> +5 à l'adverse.
+          if (end.lastCapture!.rank === 12) {
+            expect(end.bonusPoints[end.lastCapture!.team]).toBe(5);
+          } else {
+            const other = end.lastCapture!.team === "A" ? "B" : "A";
+            expect(end.bonusPoints[other]).toBe(5);
+          }
+        }
+        // Un dernier coup sans capture -> aucun bonus ET aucune lastCapture.
+        // (impossible de distinguer ici sans rejouer, mais l'invariant tient :
+        // pas de bonus si pas de Roi/As en dernière capture.)
+        // Le butin ne peut jamais faire perdre de points : chaque part >= 0.
+        for (const v of Object.values(end.butinPoints)) expect(v).toBeGreaterThanOrEqual(0);
+      }
     }
   });
 

@@ -28,6 +28,7 @@ class GameClient extends ChangeNotifier {
   PublicState? state;
   List<GameCard> hand = [];
   String? lastError;
+  List<PublicRoomSummary> publicRooms = [];
 
   final _events = StreamController<GameEvent>.broadcast();
   Stream<GameEvent> get events => _events.stream;
@@ -119,6 +120,11 @@ class GameClient extends ChangeNotifier {
         _events.add(GameOverEvent(msg['winningTeam'] as String));
       case 'gameAbandoned':
         _events.add(GameAbandonedEvent(msg['reason'] as String));
+      case 'publicRooms':
+        publicRooms = (msg['rooms'] as List)
+            .map((r) => PublicRoomSummary.fromJson(r as Map<String, dynamic>))
+            .toList();
+        notifyListeners();
       case 'error':
         lastError = msg['message'] as String;
         _events.add(ErrorEvent(msg['code'] as String, msg['message'] as String));
@@ -130,14 +136,28 @@ class GameClient extends ChangeNotifier {
     _channel?.sink.add(jsonEncode(msg));
   }
 
-  Future<void> createRoom(String nickname, {String mode = '2v2'}) async {
+  /// Efface une erreur résiduelle avant une nouvelle tentative de connexion :
+  /// sans ça, _waitForJoinOrError verrait l'erreur d'un essai précédent et
+  /// conclurait immédiatement au lieu d'attendre le vrai résultat de ce coup-ci.
+  void clearError() {
+    lastError = null;
+  }
+
+  Future<void> createRoom(String nickname, {String mode = '2v2', bool isPublic = false}) async {
     await connect();
-    _send({'type': 'create', 'nickname': nickname, 'mode': mode});
+    _send({'type': 'create', 'nickname': nickname, 'mode': mode, 'isPublic': isPublic});
   }
 
   Future<void> joinRoom(String code, String nickname) async {
     await connect();
     _send({'type': 'join', 'roomCode': code.toUpperCase(), 'nickname': nickname});
+  }
+
+  /// Demande la liste des salons publics rejoignables (lobby, pas plein).
+  /// Appeler périodiquement depuis l'accueil tant qu'aucune room n'est rejointe.
+  Future<void> requestPublicRooms() async {
+    await connect();
+    _send({'type': 'listPublicRooms'});
   }
 
   void joinTeam(String team) => _send({'type': 'joinTeam', 'team': team});
@@ -164,6 +184,7 @@ class GameClient extends ChangeNotifier {
     state = null;
     hand = [];
     lastError = null;
+    publicRooms = [];
     notifyListeners();
   }
 

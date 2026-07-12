@@ -63,6 +63,9 @@ class PublicState {
   final List<GameCard> tablePile;
   /// Paquet de Derba en attente de surenchère, encore affiché sur la table.
   final List<GameCard> pendingDerba;
+  /// Rang qui surenchérit la Derba en attente (0 si aucune) : SEULE cette valeur
+  /// capture le paquet ; un rang qui figure DANS le paquet ne capture pas (GDD 2.7).
+  final int pendingDerbaRank;
   final String leadPlayerId;
   final String currentTurnPlayerId;
   /// Échéance du tour courant (epoch ms), 0 hors phase de jeu. Timer 10 s.
@@ -80,6 +83,7 @@ class PublicState {
     required this.players,
     required this.tablePile,
     required this.pendingDerba,
+    required this.pendingDerbaRank,
     required this.leadPlayerId,
     required this.currentTurnPlayerId,
     required this.turnEndsAt,
@@ -103,6 +107,7 @@ class PublicState {
         pendingDerba: ((json['pendingDerba'] as List?) ?? const [])
             .map((c) => GameCard.fromJson(c as Map<String, dynamic>))
             .toList(),
+        pendingDerbaRank: (json['pendingDerbaRank'] as num?)?.toInt() ?? 0,
         leadPlayerId: json['leadPlayerId'] as String,
         currentTurnPlayerId: json['currentTurnPlayerId'] as String,
         turnEndsAt: (json['turnEndsAt'] as num?)?.toInt() ?? 0,
@@ -119,6 +124,31 @@ class PublicState {
     }
     return null;
   }
+}
+
+/// Résumé d'un salon public affiché dans la liste de l'accueil.
+class PublicRoomSummary {
+  final String roomCode;
+  final String mode; // '2v2' | '1v1'
+  final int playerCount;
+  final int maxPlayers;
+  final String hostNickname;
+
+  const PublicRoomSummary({
+    required this.roomCode,
+    required this.mode,
+    required this.playerCount,
+    required this.maxPlayers,
+    required this.hostNickname,
+  });
+
+  factory PublicRoomSummary.fromJson(Map<String, dynamic> json) => PublicRoomSummary(
+        roomCode: json['roomCode'] as String,
+        mode: json['mode'] as String,
+        playerCount: json['playerCount'] as int,
+        maxPlayers: json['maxPlayers'] as int,
+        hostNickname: json['hostNickname'] as String,
+      );
 }
 
 class RevealedAnnouncement {

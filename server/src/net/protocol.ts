@@ -10,13 +10,16 @@ import { Card, DerbaTier, TeamId } from "../game/types.js";
 // ---- Client -> Serveur ----
 
 export type ClientMessage =
-  | { type: "create"; nickname: string; mode?: "2v2" | "1v1" }
+  | { type: "create"; nickname: string; mode?: "2v2" | "1v1"; isPublic?: boolean }
   | { type: "join"; roomCode: string; nickname: string }
   | { type: "joinTeam"; team: TeamId }
   | { type: "start" }
   // La capture n'est pas un choix : le serveur capture d'office si la valeur
   // jouée est présente sur la table (GDD 2.6, capture obligatoire sur jumelle).
-  | { type: "playCard"; cardId: string };
+  | { type: "playCard"; cardId: string }
+  // Salons publics : liste des parties en lobby, non pleines, ouvertes à
+  // tous — alternative au code privé tant que la base de joueurs est petite.
+  | { type: "listPublicRooms" };
 
 // ---- Serveur -> Client ----
 
@@ -41,6 +44,11 @@ export interface PublicState {
   tablePile: Card[];
   /** Paquet de Derba en attente de surenchère, encore affiché sur la table. */
   pendingDerba: Card[];
+  /**
+   * Rang qui surenchérit la Derba en attente (0 si aucune) : SEULE cette valeur
+   * capture le paquet ; un rang qui figure DANS le paquet ne capture pas (GDD 2.7).
+   */
+  pendingDerbaRank: number;
   leadPlayerId: string;
   currentTurnPlayerId: string;
   /** Échéance (epoch ms) du tour courant — timer de 10 s, 0 hors phase de jeu. */
@@ -56,6 +64,15 @@ export interface RevealedAnnouncement {
   team: TeamId;
   kind: "ronda" | "tringa";
   rank: number;
+}
+
+/** Résumé d'un salon public affiché dans la liste de l'accueil. */
+export interface PublicRoomSummary {
+  roomCode: string;
+  mode: "2v2" | "1v1";
+  playerCount: number;
+  maxPlayers: number;
+  hostNickname: string;
 }
 
 export type ServerMessage =
@@ -90,7 +107,8 @@ export type ServerMessage =
     }
   | { type: "gameOver"; winningTeam: TeamId }
   | { type: "gameAbandoned"; reason: string }
-  | { type: "error"; code: string; message: string };
+  | { type: "error"; code: string; message: string }
+  | { type: "publicRooms"; rooms: PublicRoomSummary[] };
 
 export function encode(msg: ServerMessage): string {
   return JSON.stringify(msg);

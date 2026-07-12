@@ -130,6 +130,22 @@ describe("Table.play — Derba et surenchère", () => {
     expect(t.pendingChainCards).toHaveLength(0);
   });
 
+  it("seule la valeur dérbée surenchérit : pendingChainRank désigne cette valeur, pas la suite", () => {
+    const t = new Table();
+    // Suite ascendante déjà en place : 6-7-Valet (le Valet suit le 7, GDD 2.1).
+    t.pile = [card(7, "bastos"), card(10, "bastos")];
+    t.play(player("A"), card(6, "oros")); // A pose un 6 (pas de jumelle)
+    t.play(player("B", "B"), card(6, "copas")); // Derba sur 6 : ramasse 6,7,Valet
+    // Le paquet contient 6,7,Valet mais SEUL un 6 surenchérit (GDD 2.7).
+    expect(t.pendingChainRank).toBe(6);
+    expect(t.pendingChainCards.map((c) => c.rank).sort((a, b) => a - b)).toEqual([6, 6, 7, 10]);
+    // Un 7 (présent dans le paquet) ne capture pas : c'est une simple pose.
+    const ev = t.play(player("C"), card(7, "copas"));
+    expect(ev).toBeNull();
+    expect(t.pendingChainRank).toBeNull();
+    expect(t.pile.map((c) => c.rank)).toEqual([7]);
+  });
+
   it("le paquet de la surenchère inclut la suite capturée par la Derba initiale", () => {
     const t = new Table();
     t.pile = [card(5, "bastos")];

@@ -15,6 +15,7 @@ const kRevealDuration = Duration(milliseconds: 3000);
 const kRoundEndDuration = Duration(milliseconds: 3000);
 const kLastCaptureDuration = Duration(milliseconds: 1700);
 const kDealDuration = Duration(milliseconds: 1800);
+const kCardTallyDuration = Duration(milliseconds: 2400);
 
 // ---------------------------------------------------------------------------
 // Langage visuel commun : tous les événements utilisent le même vocabulaire
@@ -410,8 +411,12 @@ class RoundEndOverlay extends StatefulWidget {
   State<RoundEndOverlay> createState() => _RoundEndOverlayState();
 }
 
+/// Phases enchaînées de la fin de ter7, dans l'ordre : animation de dernière
+/// prise (Roi/As/MAJEBTICH) → décompte des cartes ramassées → bilan chiffré.
+enum _RoundEndPhase { lastCapture, tally, summary }
+
 class _RoundEndOverlayState extends State<RoundEndOverlay> {
-  late bool _showingLastCapture;
+  late _RoundEndPhase _phase;
 
   /// Les trois cas sont mutuellement exclusifs : dernière prise au Roi,
   /// dernière prise à l'As, ou le Lead qui n'a pas conclu (MAJEBTICH).
@@ -425,27 +430,44 @@ class _RoundEndOverlayState extends State<RoundEndOverlay> {
   @override
   void initState() {
     super.initState();
-    _showingLastCapture = _specialKind != null;
+    // On démarre par la dernière prise (Roi/As/MAJEBTICH) si applicable,
+    // sinon on saute directement au décompte des cartes.
+    _phase = _specialKind != null ? _RoundEndPhase.lastCapture : _RoundEndPhase.tally;
     _scheduleNext();
   }
 
+  /// Fait avancer la machine d'états : dernière prise → décompte → bilan.
   void _scheduleNext() {
-    if (_showingLastCapture) {
-      Future.delayed(kLastCaptureDuration, () {
-        if (!mounted) return;
-        setState(() => _showingLastCapture = false);
-        _scheduleNext();
-      });
-    } else {
-      Future.delayed(kRoundEndDuration, () {
-        if (mounted) widget.onDone();
-      });
-    }
+    final duration = switch (_phase) {
+      _RoundEndPhase.lastCapture => kLastCaptureDuration,
+      _RoundEndPhase.tally => kCardTallyDuration,
+      _RoundEndPhase.summary => kRoundEndDuration,
+    };
+    Future.delayed(duration, () {
+      if (!mounted) return;
+      final next = switch (_phase) {
+        _RoundEndPhase.lastCapture => _RoundEndPhase.tally,
+        _RoundEndPhase.tally => _RoundEndPhase.summary,
+        _RoundEndPhase.summary => null,
+      };
+      if (next == null) {
+        widget.onDone();
+        return;
+      }
+      setState(() => _phase = next);
+      _scheduleNext();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_showingLastCapture) {
+    if (_phase == _RoundEndPhase.tally) {
+      return _CardTallyOverlay(
+        countA: widget.event.cardCounts['A'] ?? 0,
+        countB: widget.event.cardCounts['B'] ?? 0,
+      );
+    }
+    if (_phase == _RoundEndPhase.lastCapture) {
       return _LastCaptureOverlay(
         kind: _specialKind!,
         team: widget.event.lastCaptureTeam ?? 'A',
@@ -595,6 +617,226 @@ class _DealOverlayState extends State<DealOverlay> with SingleTickerProviderStat
           ],
         );
       },
+    );
+  }
+}
+
+/// Décompte animé des cartes ramassées par chaque équipe en fin de ter7 :
+/// deux compteurs qui montent en parallèle, deux piles qui grandissent, et
+/// la différence qui apparaît en gros pour l'équipe en tête (GDD 2.10).
+class _CardTallyOverlay extends StatefulWidget {
+  final int countA;
+  final int countB;
+
+  const _CardTallyOverlay({required this.countA, required this.countB});
+
+  @override
+  State<_CardTallyOverlay> createState() => _CardTallyOverlayState();
+}
+
+class _CardTallyOverlayState extends State<_CardTallyOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: kCardTallyDuration,
+  )..forward();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final t = _controller.value;
+        final veil = t < 0.1 ? t / 0.1 : (t < 0.9 ? 1.0 : 1 - (t - 0.9) / 0.1);
+        // Les compteurs montent sur les 65% premiers, la différence pop ensuite.
+        final countT = Curves.easeOutCubic.transform((t / 0.65).clamp(0.0, 1.0));
+        final shownA = (widget.countA * countT).round();
+        final shownB = (widget.countB * countT).round();
+        final revealDiff = t > 0.68;
+        final diffT = Curves.elasticOut.transform(((t - 0.68) / 0.32).clamp(0.0, 1.0));
+
+        // Points de butin = ce qui DÉPASSE 20 pour l'équipe au-dessus (GDD 2.10) :
+        // 26 cartes -> +6 pts, l'autre équipe ne perd rien. Pas la différence brute.
+        // À 20-20 il n'y a PAS de leader : on n'affiche aucune équipe (le serveur
+        // n'attribue de butin qu'au-dessus de 20, strict) — badge doré neutre.
+        final isTie = widget.countA == widget.countB;
+        final leader = widget.countA > widget.countB ? 'A' : 'B';
+        final leaderCount = leader == 'A' ? widget.countA : widget.countB;
+        final butin = isTie ? 0 : (leaderCount - 20).clamp(0, 20);
+        final badgeTop = isTie ? RondaColors.goldLight : RondaColors.teamLight(leader);
+        final badgeBottom = isTie ? RondaColors.gold : RondaColors.team(leader);
+
+        return Container(
+          color: Colors.black.withValues(alpha: (veil * 0.72).clamp(0, 1)),
+          child: Center(
+            child: Opacity(
+              opacity: veil.clamp(0, 1),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _JuicyText(label: 'BUTIN DU TER7', sub: '', fontSize: 30),
+                  const SizedBox(height: 22),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _TeamTally(team: 'A', count: shownA, maxCount: 40),
+                      const SizedBox(width: 30),
+                      _TeamTally(team: 'B', count: shownB, maxCount: 40),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  // Différence : « +N pour l'équipe en tête », en gros à la fin.
+                  Opacity(
+                    opacity: revealDiff ? 1.0 : 0.0,
+                    child: Transform.scale(
+                      scale: revealDiff ? diffT : 0.0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: [badgeTop, badgeBottom]),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: RondaColors.cream.withValues(alpha: 0.8), width: 2),
+                          boxShadow: [
+                            BoxShadow(color: badgeBottom.withValues(alpha: 0.6), blurRadius: 16),
+                          ],
+                        ),
+                        child: Text(
+                          isTie ? 'ÉGALITÉ 20-20' : '+$butin PTS · ÉQUIPE $leader',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1,
+                            color: RondaColors.cream,
+                            shadows: [Shadow(color: Colors.black54, blurRadius: 3)],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Colonne d'une équipe dans le décompte : pile de cartes proportionnelle au
+/// nombre ramassé, gros compteur, badge d'équipe.
+class _TeamTally extends StatelessWidget {
+  final String team;
+  final int count;
+  final int maxCount;
+
+  const _TeamTally({required this.team, required this.count, required this.maxCount});
+
+  @override
+  Widget build(BuildContext context) {
+    // Hauteur de pile proportionnelle (bornée) : ~0 à 120px sur 40 cartes.
+    final fill = (count / maxCount).clamp(0.0, 1.0);
+    final stackCards = (count / 4).ceil().clamp(0, 10); // une carte dessinée / 4 ramassées
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 64,
+          height: 124,
+          child: Stack(
+            alignment: Alignment.bottomCenter,
+            children: [
+              for (var i = 0; i < stackCards; i++)
+                Positioned(
+                  bottom: i * 11.0,
+                  child: Transform.rotate(
+                    angle: ((i * 37) % 9 - 4) * 0.012,
+                    child: Container(
+                      width: 46,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [RondaColors.teamLight(team), RondaColors.team(team)],
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: RondaColors.cream.withValues(alpha: 0.7), width: 1),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 2, offset: const Offset(0, 1)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        // Gros compteur de cartes.
+        Container(
+          width: 62,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: RondaColors.teamLight(team), width: 2),
+          ),
+          child: Column(
+            children: [
+              Text(
+                'ÉQ. $team',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                  color: RondaColors.teamLight(team),
+                ),
+              ),
+              Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 34,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                  color: RondaColors.cream,
+                  shadows: [
+                    Shadow(color: RondaColors.team(team).withValues(alpha: 0.9), blurRadius: 8),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Barre de remplissage sous le compteur.
+        Container(
+          margin: const EdgeInsets.only(top: 4),
+          width: 62,
+          height: 5,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(3),
+          ),
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: fill,
+            child: Container(
+              decoration: BoxDecoration(
+                color: RondaColors.teamLight(team),
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

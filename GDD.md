@@ -70,6 +70,7 @@ Sens horaire, en commençant par le joueur à la droite du Lead. Le Lead joue do
 - **Derba ≠ capture ordinaire** : capturer une carte posée plusieurs tours auparavant n'est pas une Derba — seule la carte que le joueur précédent *vient* de poser compte.
 - **Le paquet suit la surenchère** : le surenchérisseur emporte toutes les cartes de la chaîne (y compris celles déjà ramassées par la Derba précédente et son éventuelle suite) — elles comptent dans le butin de son équipe. **La Missa aussi voyage avec le paquet** : si la Derba initiale a vidé la table (+1 Missa), chaque surenchérisseur reprend ce point avec le reste (décision 2026-07-12).
 - **Affichage** : tant que la surenchère est possible, le paquet de la Derba reste affiché sur la table (halo doré « surenchère ? ») — il n'est visuellement ramassé que lorsque la chaîne se rompt.
+- **Seule la valeur dérbée surenchérit** (décision 2026-07-12) : quand un paquet est en attente (ex. Derba sur un 6 ayant emporté la suite 6-7-8), **seule** une carte de valeur 6 rejoue la surenchère et reprend le paquet. Jouer un 7 ou un 8 — pourtant présents *dans* le paquet — ne capture rien : ces cartes ne sont plus sur la table, elles sont dans le paquet en attente. Le client ne doit afficher « CAPTURER » que pour la valeur dérbée (le serveur expose `pendingDerbaRank`), pas pour les autres valeurs du paquet.
 - **Vocabulaire à l'écran** : 1ère Derba = « DERBA ! », 1ère surenchère = « 7BIYEL ! », 2e surenchère (max) = « JOUJ 7BOULA ! ».
 
 ### 2.8 La Missa
@@ -99,9 +100,12 @@ Comparaisons de valeur : utiliser l'ordre de 2.1.
 
 ### 2.11 Bonus/malus de dernière capture
 
-- Si la toute dernière capture de la manche est réalisée avec un **Roi (12)** → +5 points pour l'équipe qui capture.
-- Si la toute dernière capture de la manche est réalisée avec un **As (1)** → +5 points pour l'équipe **adverse**.
-- Rappel : le Lead est censé faire cette dernière capture, mais rien n'empêche que ce soit un autre joueur dans les faits ; le bonus/malus s'applique à qui capture réellement en dernier.
+- Le bonus/malus concerne **le tout dernier coup joué de la manche** (la dernière carte de la main du dernier joueur), et **uniquement si ce coup capture** (précision 2026-07-12).
+- Si ce dernier coup capture avec un **Roi (12)** → +5 points pour l'équipe qui capture.
+- Si ce dernier coup capture avec un **As (1)** → +5 points pour l'équipe **adverse**.
+- Si le dernier coup **ne capture pas** (simple pose) : **aucun** bonus/malus, même si un Roi ou un As avait été capturé plus tôt dans la manche.
+- Rappel : le Lead est censé conclure ; s'il n'a pas réalisé la dernière capture (dernier coup non capturant, ou capturé par un autre), animation **MAJEBTICH 9A3TEK**. Ces trois animations (PRISE ROYALE / AÏE L'AS / MAJEBTICH) sont mutuellement exclusives et ne concernent que ce dernier coup.
+- **Distinction avec le reste sur la table (2.10)** : l'attribution des cartes non capturées suit la **dernière capture réellement effectuée** dans la manche (peut être antérieure au dernier coup), tandis que le bonus Roi/As suit le **dernier coup joué**. Les deux ne coïncident que si le dernier coup a capturé.
 
 ### 2.12 Récapitulatif des points
 
@@ -162,6 +166,7 @@ Exclus explicitement de la v1 : chat (texte/vocal/emoji), historique/scoreboard 
   - Palier 3 (10 pts, surenchère max) : effet fort, quasi plein écran, moment fort de la partie.
   - Direction exacte à valider via maquettes/prototypes en phase design (à faire).
 - **Missa** : effet discret mais satisfaisant sur la table qui se vide — pas de célébration extravagante, priorité à la clarté et à la sensation de "clean sweep".
+- **Décompte du butin en fin de ter7** (décision 2026-07-12) : une animation compte les cartes ramassées par chaque équipe (deux compteurs qui montent en parallèle, deux piles qui grandissent), puis fait apparaître **les points de butin** en gros pour l'équipe en tête — c'est-à-dire **ce qui dépasse 20** (ex. 26 cartes → « +6 PTS », l'autre équipe ne perd rien), **pas** la différence brute entre les deux totaux. Enchaînement des overlays de fin de ter7 : **animation de dernière prise (Roi/As/MAJEBTICH, si applicable) → décompte des cartes → bilan chiffré**.
 
 ---
 
@@ -180,6 +185,8 @@ Exclus explicitement de la v1 : chat (texte/vocal/emoji), historique/scoreboard 
 - 2026-07-11 : recueil de besoin initial complet (règles clarifiées, scope v1 figé, style visuel marocain choisi, pas d'auth/compte, pas de reconnexion en v1). Document créé.
 - 2026-07-11 : stack validée (Flutter + Colyseus), scaffolding, moteur de règles testé (29 tests).
 - 2026-07-11 : pivot backend Colyseus → WebSocket pur + JSON (pas de client Dart pour Colyseus). Fin de partie immédiate à 41 pts implémentée (vérification après chaque attribution de points, pas seulement en fin de manche). App Flutter v1 complète : accueil, lobby, table de jeu, animations Derba (3 paliers)/Missa, victoire. E2E validé : 4 clients Flutter réels jouent une partie complète contre le serveur.
+- 2026-07-12 (quinquies) : cinquième passe de feedback. Corrections : (1) **vraie cause du carré rouge à la distribution** trouvée — `lobby_screen` lisait `context.read()` dans `dispose()` (assertion « deactivated widget's ancestor » au passage lobby→jeu) ; référence au client sauvegardée en `initState`. (2) **Ordre des overlays de fin de ter7** : la dernière prise (Roi/As/MAJEBTICH) passe AVANT le décompte des cartes. (3) **Points de butin corrigés à l'affichage** : on montre « ce qui dépasse 20 » (26 → +6), plus la différence brute doublée. (4) **Bonus Roi/As recentré sur le dernier coup joué** et seulement s'il capture (précision 2.11) — une pose finale ne donne aucun bonus ; le reste sur la table reste attribué à la dernière capture *effective*.
+- 2026-07-12 (quater) : quatrième passe de feedback. Corrections : (1) **la surenchère de Derba n'est déclenchée que par la valeur dérbée** — jouer une autre valeur du paquet (ex. le 7 d'une suite 6-7-8 dérbée sur le 6) n'affiche plus « CAPTURER » à tort (`pendingDerbaRank` exposé) ; (2) le compteur du joueur courant utilise un `Timer.periodic` (la jauge avance vraiment, même sans message serveur) ; (3) suppression du flash d'erreur rouge alarmant pendant la distribution (erreurs de course `cardNotInHand`/`notYourTurn` silencieuses). Ajouts : marqueur « pile de cartes » permanent à côté du donneur (Lead), et **animation de décompte des cartes ramassées** en fin de ter7 avec la différence entre équipes.
 - 2026-07-12 (ter) : troisième passe de feedback. Corrections : resync de la main après chaque coup (cartes fantômes après auto-jeu du timer), gros compteur de secondes pour le joueur courant, **la Missa voyage avec la surenchère de Derba** et le paquet reste affiché sur la table en attente. Ajouts : **mode 1v1** (choix à la création, 5 tfri9at de 4, rondas plus-grande-gagne), animation de distribution par le Lead, animation MAJEBTICH 9A3TEK, vocabulaire darija (TFRI9A, TER7, WACH KAYN CHI RWANED ?, 7BIYEL !, JOUJ 7BOULA !).
 - 2026-07-12 (bis) : deuxième passe de feedback. Pastille d'annonce : révèle désormais RONDA vs TRINGA (pas la valeur). Timer de tour de 10 s avec auto-jeu de la carte la plus à gauche (section 3.4). Animations de dernière capture (Roi = célébration, As = déception). Police display « Lilita One » (OFL), tout le texte en majuscules. Direction artistique : assets nano-banana-2 (cartes, fonds, dos) + UI « chunky » façon Caveboy Escape.
 - 2026-07-12 : premier test utilisateur. Trois corrections de règles : (1) **capture obligatoire sur jumelle** — interdit de poser une carte à côté d'une carte de même valeur (clarifié avec l'utilisateur) ; (2) la **suite ascendante** se lit sur les valeurs présentes sur la table, pas sur l'ordre de pose (bug : un 4 laissait le 5 et le 6) ; (3) la **surenchère de Derba** était injouable (la réponse tombait sur table vide et cassait la chaîne) — corrigée, et décision utilisateur : le surenchérisseur emporte tout le paquet de la chaîne (butin). Une Derba exige la carte *juste* posée, pas une carte ancienne. Le choix capturer/poser disparaît du protocole et de l'UI (le serveur capture d'office).

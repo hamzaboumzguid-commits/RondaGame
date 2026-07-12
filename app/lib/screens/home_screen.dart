@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../models/protocol.dart';
 import '../net/game_client.dart';
 import '../theme.dart';
 import '../widgets/chunky_button.dart';
@@ -24,9 +25,32 @@ class _HomeScreenState extends State<HomeScreen> {
   final _codeController = TextEditingController();
   bool _busy = false;
   String _mode = '2v2';
+  bool _isPublic = false;
+  Timer? _publicRoomsTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    final client = context.read<GameClient>();
+    // Rafraîchit la liste des salons publics tant qu'on est sur l'accueil,
+    // le temps d'avoir assez d'utilisateurs pour un vrai matchmaking (2026-07-12).
+    // connect() notifie ses listeners -> reporté après le premier frame pour ne
+    // pas déclencher un rebuild du provider pendant que l'arbre se monte encore.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      client.requestPublicRooms();
+    });
+    _publicRoomsTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      // On cesse de solliciter le serveur dès qu'une room est rejointe : l'accueil
+      // reste monté SOUS le lobby/jeu (Navigator.push, pas pushReplacement), donc
+      // sans ce garde le polling continuerait toute la partie. `roomCode != null`
+      // signale qu'on a reçu "joined" -> plus rien à lister depuis l'accueil.
+      if (!_busy && client.roomCode == null) client.requestPublicRooms();
+    });
+  }
 
   @override
   void dispose() {
+    _publicRoomsTimer?.cancel();
     _nicknameController.dispose();
     _codeController.dispose();
     super.dispose();
@@ -44,7 +68,11 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     await _perform(
-      () => context.read<GameClient>().createRoom(_nicknameController.text.trim(), mode: _mode),
+      () => context.read<GameClient>().createRoom(
+            _nicknameController.text.trim(),
+            mode: _mode,
+            isPublic: _isPublic,
+          ),
     );
   }
 
@@ -61,9 +89,20 @@ class _HomeScreenState extends State<HomeScreen> {
     await _perform(() => context.read<GameClient>().joinRoom(code, _nicknameController.text.trim()));
   }
 
+  Future<void> _joinPublicRoom(String roomCode) async {
+    if (_nicknameError != null) {
+      _showError(_nicknameError!);
+      return;
+    }
+    await _perform(() => context.read<GameClient>().joinRoom(roomCode, _nicknameController.text.trim()));
+  }
+
   Future<void> _perform(Future<void> Function() action) async {
     setState(() => _busy = true);
     final client = context.read<GameClient>();
+    // Repart d'une ardoise propre : une erreur laissée par une tentative
+    // précédente ne doit pas être prise pour le résultat de celle-ci.
+    client.clearError();
     try {
       await action();
       // Attend la confirmation "joined" (playerId assigné) ou une erreur serveur.
@@ -181,13 +220,43 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
+
+                    // Partie publique = visible dans la liste ci-dessous, sans code
+                    // à partager (utile tant que le matchmaking mondial n'existe pas).
+                    GestureDetector(
+                      onTap: () => setState(() => _isPublic = !_isPublic),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Checkbox(
+                            value: _isPublic,
+                            onChanged: (v) => setState(() => _isPublic = v ?? false),
+                            activeColor: const Color(0xFF8FA83B),
+                            side: const BorderSide(color: Color(0xFF3A2417), width: 2),
+                          ),
+                          const Text(
+                            'PARTIE PUBLIQUE (visible par tous)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                              color: Color(0xFF4A2E15),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
 
                     ChunkyButton.red(
                       label: 'CRÉER UNE PARTIE',
                       icon: Icons.play_arrow_rounded,
                       onPressed: _busy ? null : _createRoom,
                     ),
+                    const SizedBox(height: 22),
+
+                    _PublicRoomsList(onJoin: _busy ? null : _joinPublicRoom),
                     const SizedBox(height: 22),
 
                     ChunkyPanel(
@@ -399,6 +468,118 @@ class _ModeChip extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Liste des salons publics rejoignables sans code (le temps d'avoir assez
+/// d'utilisateurs pour un vrai matchmaking mondial, 2026-07-12). Se met à
+/// jour via le polling démarré dans _HomeScreenState.initState.
+class _PublicRoomsList extends StatelessWidget {
+  final Future<void> Function(String roomCode)? onJoin;
+
+  const _PublicRoomsList({required this.onJoin});
+
+  @override
+  Widget build(BuildContext context) {
+    final rooms = context.watch<GameClient>().publicRooms;
+
+    return ChunkyPanel(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+      child: Column(
+        children: [
+          const Text(
+            'PARTIES PUBLIQUES',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 2,
+              color: Color(0xFF6B4A26),
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (rooms.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                'Aucune partie publique ouverte pour le moment',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6B4A26),
+                ),
+              ),
+            )
+          else
+            Column(
+              children: [
+                for (final room in rooms) ...[
+                  _PublicRoomRow(room: room, onJoin: onJoin),
+                  if (room != rooms.last) const SizedBox(height: 8),
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PublicRoomRow extends StatelessWidget {
+  final PublicRoomSummary room;
+  final Future<void> Function(String roomCode)? onJoin;
+
+  const _PublicRoomRow({required this.room, required this.onJoin});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFEFE0BC), Color(0xFFFFF8E6)],
+        ),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: const Color(0xFF3A2417), width: 2),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Salon de ${room.hostNickname}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF4A2E15),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  '${room.mode == '1v1' ? '1 VS 1' : '2 VS 2'} · ${room.playerCount}/${room.maxPlayers} joueurs',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF8A6238),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ChunkyButton.green(
+            label: 'REJOINDRE',
+            height: 40,
+            fontSize: 13,
+            onPressed: onJoin == null ? null : () => onJoin!(room.roomCode),
+          ),
+        ],
       ),
     );
   }

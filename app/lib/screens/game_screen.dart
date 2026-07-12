@@ -49,9 +49,15 @@ class _GameScreenState extends State<GameScreen> {
     super.dispose();
   }
 
+  // Erreurs de course bénignes : un clic ou l'auto-jeu du timer qui arrive juste
+  // au changement de tour / à la distribution. Le serveur les a déjà ignorées ;
+  // les afficher en rouge est alarmant pour rien (bug du flash pendant la TFRI9A).
+  static const _silentErrorCodes = {'cardNotInHand', 'notYourTurn'};
+
   void _enqueueEvent(GameEvent event) {
     if (!mounted) return;
     if (event is ErrorEvent) {
+      if (_silentErrorCodes.contains(event.code)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(event.message),
@@ -132,9 +138,14 @@ class _GameScreenState extends State<GameScreen> {
     final selectedCard = _selectedCardId == null
         ? null
         : client.hand.where((c) => c.id == _selectedCardId).firstOrNull;
+    // Capture = jumelle sur la table, OU surenchère EXACTE sur la Derba en attente.
+    // Attention (GDD 2.7) : jouer un rang qui n'est présent que DANS le paquet en
+    // attente (ex. un 7 alors que la Derba est sur le 6 d'une suite 6-7-8) ne
+    // capture pas — seule la valeur `pendingDerbaRank` reprend le paquet.
     final wouldCapture = selectedCard != null &&
         (state.tablePile.any((c) => c.rank == selectedCard.rank) ||
-            state.pendingDerba.any((c) => c.rank == selectedCard.rank));
+            (state.pendingDerbaRank != 0 &&
+                selectedCard.rank == state.pendingDerbaRank));
 
     // En 1v1, l'adversaire unique est affiché en face ; pas de côtés.
     final is1v1 = state.mode == '1v1';
@@ -185,7 +196,10 @@ class _GameScreenState extends State<GameScreen> {
                       _TurnIndicator(state: state, myId: client.playerId),
                       const SizedBox(height: 4),
                       if (client.isMyTurn && state.turnEndsAt > 0)
-                        _MyCountdownBar(endsAt: state.turnEndsAt),
+                        _MyCountdownBar(
+                          key: ValueKey('countdown-${state.turnEndsAt}'),
+                          endsAt: state.turnEndsAt,
+                        ),
                       if ((client.me?.announcementKind ?? '').isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
@@ -540,12 +554,19 @@ class _SeatBadge extends StatelessWidget {
                 ),
               ),
             avatar,
-            if (isLead)
+            if (isLead) ...[
               const Positioned(
                 top: -7,
                 right: -3,
                 child: Icon(Icons.workspace_premium, size: 16, color: RondaColors.goldLight),
               ),
+              // Pile de cartes du donneur : tout le monde voit qui distribue.
+              const Positioned(
+                bottom: -2,
+                right: -16,
+                child: _DealerPile(),
+              ),
+            ],
             Positioned(
               bottom: -3,
               left: -5,
@@ -589,6 +610,50 @@ class _SeatBadge extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 0, vertical: 2),
       child: badge,
+    );
+  }
+}
+
+/// Petite pile de cartes face cachée accolée au donneur (le Lead) : marqueur
+/// permanent « c'est lui qui distribue » (le paquet vole depuis ici à la TFRI9A).
+class _DealerPile extends StatelessWidget {
+  const _DealerPile();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 26,
+      height: 34,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          for (var i = 0; i < 3; i++)
+            Positioned(
+              left: i * 2.0,
+              top: -i * 2.0,
+              child: Container(
+                width: 20,
+                height: 28,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF9B2C2C), Color(0xFF6E1717)],
+                  ),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: RondaColors.cream.withValues(alpha: 0.85), width: 1),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 2, offset: const Offset(1, 1)),
+                  ],
+                ),
+                child: Center(
+                  child: Icon(Icons.style_rounded,
+                      size: 9, color: RondaColors.goldLight.withValues(alpha: 0.8)),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -1000,19 +1065,29 @@ class _TurnIndicator extends StatelessWidget {
 class _MyCountdownBar extends StatefulWidget {
   final int endsAt;
 
-  const _MyCountdownBar({required this.endsAt});
+  const _MyCountdownBar({super.key, required this.endsAt});
 
   @override
   State<_MyCountdownBar> createState() => _MyCountdownBarState();
 }
 
-class _MyCountdownBarState extends State<_MyCountdownBar>
-    with SingleTickerProviderStateMixin {
-  late final Ticker _ticker = createTicker((_) => setState(() {}))..start();
+class _MyCountdownBarState extends State<_MyCountdownBar> {
+  // Timer.periodic plutôt qu'un Ticker : il tourne indépendamment du planificateur
+  // de frames et n'est jamais mis en sourdine (TickerMode), donc la jauge du joueur
+  // courant avance vraiment même quand aucun message serveur ne rafraîchit l'écran.
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(milliseconds: 80), (_) {
+      if (mounted) setState(() {});
+    });
+  }
 
   @override
   void dispose() {
-    _ticker.dispose();
+    _tick?.cancel();
     super.dispose();
   }
 
