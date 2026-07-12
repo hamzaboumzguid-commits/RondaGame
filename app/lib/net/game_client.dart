@@ -132,11 +132,12 @@ class GameClient extends ChangeNotifier {
 
   void startGame() => _send({'type': 'start'});
 
-  void playCard(String cardId, {required bool capture}) {
+  void playCard(String cardId) {
     // Retire la carte localement tout de suite pour une UI réactive ;
     // le serveur renverra la main complète à la prochaine donne.
+    // La capture n'est pas un choix : le serveur capture d'office (GDD 2.6).
     hand.removeWhere((c) => c.id == cardId);
-    _send({'type': 'playCard', 'cardId': cardId, 'capture': capture});
+    _send({'type': 'playCard', 'cardId': cardId});
     notifyListeners();
   }
 

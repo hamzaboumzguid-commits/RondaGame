@@ -53,9 +53,10 @@ Sens horaire, en commençant par le joueur à la droite du Lead. Le Lead joue do
 ### 2.6 Capturer des cartes
 
 - Une carte en main capture une carte de même valeur sur la table.
-- Si la capture forme une suite continue sur la table (ex : table 5-6-7, le joueur pose un 5), **toute la suite est récupérée**. Ceci n'est pas une Derba.
+- **Capture obligatoire sur jumelle** : si la valeur de la carte jouée est présente sur la table, la capture est **imposée** — il est interdit de poser une carte « à côté » de sa jumelle. Conséquence : la table ne contient jamais deux cartes de même valeur.
+- **Capture libre** porte sur le **choix de la carte jouée** : un joueur n'est jamais obligé de jouer une carte capturante s'il préfère en jouer une autre. Mais la carte jouée capture dès qu'elle le peut.
+- **Suite ascendante** : la capture d'une valeur emporte aussi toute la suite ascendante de valeurs **présentes sur la table** (ex : table 5-6-7, le joueur pose un 5 → tout part), **quel que soit l'ordre dans lequel les cartes ont été posées** (table 6-2-4-5, pose d'un 4 → le 4, 5 et 6 partent, le 2 reste). La suite se lit vers le haut uniquement (un 4 ne prend pas le 3) et suit l'ordre des rangs de 2.1 (7 est suivi du Valet). Ceci n'est pas une Derba.
 - Si aucune capture n'est possible, la carte est simplement posée sur la table (rejoint le tas commun).
-- **Capture libre** : aucune obligation de capturer même si c'est possible. Choix stratégique laissé au joueur à 100%.
 
 ### 2.7 La Derba
 
@@ -66,6 +67,8 @@ Sens horaire, en commençant par le joueur à la droite du Lead. Le Lead joue do
   - 3e Derba immédiate en chaîne : annule le 5 pts, vaut 10 points
 - **Plafond à 3 Derbas en chaîne (max 10 pts)** : avec 4 exemplaires par valeur dans le jeu (1 posée + 3 réponses possibles), la chaîne ne peut pas aller plus loin.
 - La chaîne se rompt dès qu'un joueur ne répond pas immédiatement avec la même valeur (autre action = fin de la chaîne, dernière Derba valide conservée).
+- **Derba ≠ capture ordinaire** : capturer une carte posée plusieurs tours auparavant n'est pas une Derba — seule la carte que le joueur précédent *vient* de poser compte.
+- **Le paquet suit la surenchère** : le surenchérisseur emporte toutes les cartes de la chaîne (y compris celles déjà ramassées par la Derba précédente et son éventuelle suite) — elles comptent dans le butin de son équipe. La surenchère ne touche pas la table, elle ne peut donc pas déclencher de Missa.
 
 ### 2.8 La Missa
 
@@ -161,3 +164,4 @@ Exclus explicitement de la v1 : chat (texte/vocal/emoji), historique/scoreboard 
 - 2026-07-11 : recueil de besoin initial complet (règles clarifiées, scope v1 figé, style visuel marocain choisi, pas d'auth/compte, pas de reconnexion en v1). Document créé.
 - 2026-07-11 : stack validée (Flutter + Colyseus), scaffolding, moteur de règles testé (29 tests).
 - 2026-07-11 : pivot backend Colyseus → WebSocket pur + JSON (pas de client Dart pour Colyseus). Fin de partie immédiate à 41 pts implémentée (vérification après chaque attribution de points, pas seulement en fin de manche). App Flutter v1 complète : accueil, lobby, table de jeu, animations Derba (3 paliers)/Missa, victoire. E2E validé : 4 clients Flutter réels jouent une partie complète contre le serveur.
+- 2026-07-12 : premier test utilisateur. Trois corrections de règles : (1) **capture obligatoire sur jumelle** — interdit de poser une carte à côté d'une carte de même valeur (clarifié avec l'utilisateur) ; (2) la **suite ascendante** se lit sur les valeurs présentes sur la table, pas sur l'ordre de pose (bug : un 4 laissait le 5 et le 6) ; (3) la **surenchère de Derba** était injouable (la réponse tombait sur table vide et cassait la chaîne) — corrigée, et décision utilisateur : le surenchérisseur emporte tout le paquet de la chaîne (butin). Une Derba exige la carte *juste* posée, pas une carte ancienne. Le choix capturer/poser disparaît du protocole et de l'UI (le serveur capture d'office).

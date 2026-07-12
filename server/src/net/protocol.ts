@@ -14,7 +14,9 @@ export type ClientMessage =
   | { type: "join"; roomCode: string; nickname: string }
   | { type: "joinTeam"; team: TeamId }
   | { type: "start" }
-  | { type: "playCard"; cardId: string; capture: boolean };
+  // La capture n'est pas un choix : le serveur capture d'office si la valeur
+  // jouée est présente sur la table (GDD 2.6, capture obligatoire sur jumelle).
+  | { type: "playCard"; cardId: string };
 
 // ---- Serveur -> Client ----
 

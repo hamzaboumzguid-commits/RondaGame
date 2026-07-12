@@ -78,7 +78,7 @@ export function createGameServer(): GameServer {
           room?.start(playerId);
           break;
         case "playCard":
-          room?.playCard(playerId, msg.cardId, msg.capture);
+          room?.playCard(playerId, msg.cardId);
           break;
       }
     });

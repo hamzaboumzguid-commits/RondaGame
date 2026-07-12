@@ -1,7 +1,6 @@
 @Tags(['e2e'])
 library;
 
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -87,9 +86,7 @@ void main() {
           continue;
         }
         final card = current.hand.first;
-        final canCapture =
-            current.state!.tablePile.any((c) => c.rank == card.rank);
-        current.playCard(card.id, capture: canCapture);
+        current.playCard(card.id);
         await Future<void>.delayed(const Duration(milliseconds: 5));
       }
 

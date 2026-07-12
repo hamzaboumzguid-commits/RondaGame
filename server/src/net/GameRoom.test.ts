@@ -96,10 +96,9 @@ describe("GameRoom — partie complète", () => {
       if (!current || current.hand.length === 0) break;
 
       const card = current.hand[0];
-      const canCapture = state.tablePile.some((c) => c.rank === card.rank);
       // retire la carte localement (le serveur renvoie la main via yourHand seulement à la donne)
       current.hand = current.hand.slice(1);
-      room.playCard(current.id, card.id, canCapture);
+      room.playCard(current.id, card.id);
       turns++;
     }
   }

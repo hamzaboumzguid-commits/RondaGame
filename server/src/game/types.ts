@@ -49,6 +49,12 @@ export interface CaptureEvent {
   isDerba: boolean;
   derbaTier: DerbaTier;
   isMissa: boolean; // table vidée par cette capture
+  /**
+   * Cartes reprises à l'équipe adverse lors d'une surenchère de Derba :
+   * le surenchérisseur emporte tout le paquet de la chaîne (décision GDD 2.7).
+   * Déjà incluses dans cardsCaptured ; à retirer du butin adverse.
+   */
+  reclaimedCards: Card[];
 }
 
 export type AnnouncementKind = "ronda" | "tringa";

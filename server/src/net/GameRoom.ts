@@ -183,7 +183,7 @@ export class GameRoom {
     return anns;
   }
 
-  playCard(id: string, cardId: string, capture: boolean): void {
+  playCard(id: string, cardId: string): void {
     if (this.phase !== "playing") return;
     const player = this.players.find((p) => p.id === id);
     if (!player) return;
@@ -199,9 +199,16 @@ export class GameRoom {
     }
     const [card] = player.hand.splice(cardIdx, 1);
 
-    const event = this.table.play(player, card, { capture });
+    const event = this.table.play(player, card);
 
     if (event) {
+      // Surenchère de Derba : le paquet de la chaîne est repris à l'équipe adverse
+      // (les cartes reprises sont déjà incluses dans cardsCaptured).
+      if (event.reclaimedCards.length > 0) {
+        const reclaimedIds = new Set(event.reclaimedCards.map((c) => c.id));
+        const opposing = this.capturedByTeam[this.otherTeam(event.byTeam)];
+        this.capturedByTeam[this.otherTeam(event.byTeam)] = opposing.filter((c) => !reclaimedIds.has(c.id));
+      }
       this.capturedByTeam[event.byTeam].push(...event.cardsCaptured);
       this.lastCapture = { card: event.playedCard, team: event.byTeam };
 

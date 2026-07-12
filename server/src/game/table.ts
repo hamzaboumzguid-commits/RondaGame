@@ -1,4 +1,4 @@
-import { Card, CaptureEvent, DerbaTier, PlayerState, TeamId } from "./types.js";
+import { Card, CaptureEvent, DerbaTier, PlayerState, RANK_ORDER, rankIndex } from "./types.js";
 
 /**
  * État et règles de la table de jeu (GDD 2.6, 2.7, 2.8).
@@ -7,46 +7,79 @@ import { Card, CaptureEvent, DerbaTier, PlayerState, TeamId } from "./types.js";
 export class Table {
   pile: Card[] = [];
 
-  /** Dernière capture réalisée, utilisée pour détecter une chaîne de Derba (GDD 2.7). */
-  private lastCapture: { rank: Card["rank"]; byPlayerId: string; derbaTier: DerbaTier } | null = null;
+  /**
+   * Chaîne de Derba en cours (GDD 2.7) : rang concerné, palier atteint, et
+   * cartes accumulées dans le paquet — le prochain surenchérisseur emporte tout.
+   * Remise à null dès qu'un joueur fait autre chose que répondre avec la même valeur.
+   */
+  private derbaChain: { rank: Card["rank"]; derbaTier: DerbaTier; chainCards: Card[] } | null = null;
+
+  /**
+   * Valeur de la carte POSÉE au coup précédent (null si le coup précédent était
+   * une capture). Une Derba capture « la carte que l'adversaire vient de poser »
+   * (GDD 2.7) — capturer une carte plus ancienne n'est pas une Derba.
+   */
+  private justPosedRank: Card["rank"] | null = null;
 
   reset(): void {
     this.pile = [];
-    this.lastCapture = null;
+    this.derbaChain = null;
+    this.justPosedRank = null;
   }
 
   /**
-   * Joue une carte pour un joueur : capture si possible (choix du joueur si plusieurs cibles),
-   * sinon la pose sur la table. Capture libre : jamais imposée (GDD 2.6).
+   * Joue une carte pour un joueur. Si une carte de même valeur est sur la table,
+   * la capture est OBLIGATOIRE (GDD 2.6 — impossible de poser une carte à côté
+   * de sa jumelle). Sinon la carte rejoint le tas commun — sauf si elle répond
+   * immédiatement à une Derba avec la même valeur : c'est la surenchère (GDD 2.7),
+   * le surenchérisseur emporte tout le paquet de la chaîne.
+   * Conséquence de la capture obligatoire : la table ne contient jamais deux
+   * cartes de même valeur.
    *
-   * @param targetRank si fourni et présent sur la table, capture cette valeur (+ suite continue).
-   *                   si omis ou absent de la table, la carte est simplement posée.
+   * "Capture libre" (GDD 2.6) porte sur le choix de la carte jouée : le joueur
+   * n'est jamais obligé de JOUER une carte capturante, mais s'il en joue une,
+   * elle capture.
    */
-  play(player: Pick<PlayerState, "id" | "team">, card: Card, opts: { capture: boolean }): CaptureEvent | null {
-    if (!opts.capture || !this.pile.some((c) => c.rank === card.rank)) {
+  play(player: Pick<PlayerState, "id" | "team">, card: Card): CaptureEvent | null {
+    const hasTwin = this.pile.some((c) => c.rank === card.rank);
+
+    // Surenchère de Derba : réponse immédiate avec la même valeur alors que la
+    // Derba précédente a déjà ramassé les cartes (la table n'a plus ce rang).
+    if (!hasTwin && this.derbaChain !== null && this.derbaChain.rank === card.rank) {
+      const tier: DerbaTier = this.derbaChain.derbaTier === 1 ? 2 : 3;
+      const reclaimed = [...this.derbaChain.chainCards];
+      const cardsCaptured = [...reclaimed, card];
+      this.derbaChain = tier < 3 ? { rank: card.rank, derbaTier: tier, chainCards: cardsCaptured } : null;
+      this.justPosedRank = null;
+      return {
+        byPlayerId: player.id,
+        byTeam: player.team,
+        cardsCaptured,
+        playedCard: card,
+        isDerba: true,
+        derbaTier: tier,
+        isMissa: false, // la table n'est pas touchée par la surenchère
+        reclaimedCards: reclaimed,
+      };
+    }
+
+    if (!hasTwin) {
       this.pile.push(card);
-      this.lastCapture = null; // pose = rompt toute chaîne de Derba en cours
+      this.derbaChain = null; // pose = rompt toute chaîne de Derba en cours
+      this.justPosedRank = card.rank;
       return null;
     }
 
-    const isDerba = this.pile.length > 0 && this.pile[this.pile.length - 1].rank === card.rank;
+    // Derba = capture immédiate de la carte que le joueur précédent vient de POSER
+    // (capturer une carte posée il y a plusieurs tours n'est pas une Derba).
+    const isDerba = this.justPosedRank === card.rank;
 
-    const captured = this.captureFrom(card.rank);
+    const captured = this.captureRun(card.rank);
     const cardsCaptured = [...captured, card];
-
-    let derbaTier: DerbaTier = 0;
-    if (isDerba) {
-      const chained = this.lastCapture !== null && this.lastCapture.rank === card.rank;
-      if (chained) {
-        derbaTier = this.lastCapture!.derbaTier === 1 ? 2 : this.lastCapture!.derbaTier === 2 ? 3 : 3;
-      } else {
-        derbaTier = 1;
-      }
-    }
-
     const isMissa = this.pile.length === 0;
 
-    this.lastCapture = isDerba ? { rank: card.rank, byPlayerId: player.id, derbaTier } : null;
+    this.derbaChain = isDerba ? { rank: card.rank, derbaTier: 1, chainCards: cardsCaptured } : null;
+    this.justPosedRank = null;
 
     return {
       byPlayerId: player.id,
@@ -54,39 +87,28 @@ export class Table {
       cardsCaptured,
       playedCard: card,
       isDerba,
-      derbaTier,
+      derbaTier: isDerba ? 1 : 0,
       isMissa,
+      reclaimedCards: [],
     };
   }
 
   /**
-   * Capture la valeur cible et toute suite continue attenante (GDD 2.6 — ex table 5-6-7, pose d'un 5).
-   * Retire les cartes du pile et les retourne (sans la carte jouée elle-même).
+   * Capture la valeur cible puis toute la suite ascendante de valeurs PRÉSENTES
+   * sur la table (GDD 2.6 — ex table 5-6-7, pose d'un 5 : tout part), quel que
+   * soit l'ordre dans lequel les cartes ont été posées.
+   * Retire les cartes de la pile et les retourne (sans la carte jouée elle-même).
    */
-  private captureFrom(rank: Card["rank"]): Card[] {
-    const idx = this.pile.findIndex((c) => c.rank === rank);
-    if (idx === -1) return [];
-
-    // La suite est capturée dans son intégralité contiguë à partir de la carte capturée,
-    // en remontant tant que les valeurs de la pile forment une séquence de rangs consécutifs
-    // dans l'ordre RANK_ORDER, comme décrit dans l'exemple du GDD (5-6-7 capturé par un 5).
-    let start = idx;
-    let end = idx;
-    // La capture porte sur toute la table restante à partir du point de correspondance :
-    // dans cette variante, une fois une valeur trouvée, toute la suite visible qui lui est
-    // contiguë en rang est prise. On étend en avant tant que la suite continue.
-    while (end + 1 < this.pile.length && this.isNextInSequence(this.pile[end].rank, this.pile[end + 1].rank)) {
-      end++;
+  private captureRun(rank: Card["rank"]): Card[] {
+    const captured: Card[] = [];
+    let nextIdx = rankIndex(rank);
+    while (nextIdx < RANK_ORDER.length) {
+      const pileIdx = this.pile.findIndex((c) => c.rank === RANK_ORDER[nextIdx]);
+      if (pileIdx === -1) break;
+      captured.push(...this.pile.splice(pileIdx, 1));
+      nextIdx++;
     }
-
-    const captured = this.pile.slice(start, end + 1);
-    this.pile.splice(start, end + 1 - start);
     return captured;
-  }
-
-  private isNextInSequence(a: Card["rank"], b: Card["rank"]): boolean {
-    const RANK_ORDER = [1, 2, 3, 4, 5, 6, 7, 10, 11, 12];
-    return RANK_ORDER.indexOf(b) === RANK_ORDER.indexOf(a) + 1;
   }
 
   isEmpty(): boolean {
@@ -99,9 +121,4 @@ export class Table {
     this.pile = [];
     return remaining;
   }
-}
-
-export interface DerbaChainState {
-  active: boolean;
-  tier: DerbaTier;
 }

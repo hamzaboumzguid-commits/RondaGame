@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -11,9 +12,10 @@ import '../widgets/event_overlays.dart';
 import '../widgets/playing_card.dart';
 import 'victory_screen.dart';
 
-/// Table de jeu : sièges autour du tapis, pile centrale, main en bas.
-/// Les événements serveur (Derba, Missa, révélations, fins de manche)
-/// sont mis en file et joués un par un en overlay bloquant (GDD 3.4).
+/// Table de jeu : sièges autour du tapis, pile centrale éparpillée façon vraie
+/// table, main en éventail en bas. Les événements serveur (Derba, Missa,
+/// révélations, fins de manche) sont mis en file et joués un par un en overlay
+/// bloquant (GDD 3.4).
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
 
@@ -98,10 +100,10 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
-  void _playSelected({required bool capture}) {
+  void _playSelected() {
     final cardId = _selectedCardId;
     if (cardId == null) return;
-    context.read<GameClient>().playCard(cardId, capture: capture);
+    context.read<GameClient>().playCard(cardId);
     setState(() => _selectedCardId = null);
   }
 
@@ -126,7 +128,7 @@ class _GameScreenState extends State<GameScreen> {
     final selectedCard = _selectedCardId == null
         ? null
         : client.hand.where((c) => c.id == _selectedCardId).firstOrNull;
-    final canCapture = selectedCard != null &&
+    final wouldCapture = selectedCard != null &&
         state.tablePile.any((c) => c.rank == selectedCard.rank);
 
     return PopScope(
@@ -151,35 +153,35 @@ class _GameScreenState extends State<GameScreen> {
                         final quit = await _confirmQuit();
                         if (quit == true && mounted) _exitToHome();
                       }),
-                      const SizedBox(height: 4),
-                      _SeatBadge(player: seatAt(2), state: state, alignment: Alignment.center),
+                      const SizedBox(height: 2),
+                      _SeatBadge(player: seatAt(2), state: state),
                       Expanded(
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            _SeatBadge(player: seatAt(3), state: state, vertical: true),
-                            Expanded(child: _TablePile(cards: state.tablePile)),
-                            _SeatBadge(player: seatAt(1), state: state, vertical: true),
+                            _SeatBadge(player: seatAt(3), state: state, compact: true),
+                            Expanded(child: _FeltTable(cards: state.tablePile)),
+                            _SeatBadge(player: seatAt(1), state: state, compact: true),
                           ],
                         ),
                       ),
                       _TurnIndicator(state: state, myId: client.playerId),
-                      const SizedBox(height: 6),
-                      _ActionBar(
+                      const SizedBox(height: 4),
+                      _PlayButton(
                         visible: selectedCard != null && client.isMyTurn,
-                        canCapture: canCapture,
-                        onCapture: () => _playSelected(capture: true),
-                        onPlace: () => _playSelected(capture: false),
+                        capture: wouldCapture,
+                        onPlay: _playSelected,
                       ),
-                      const SizedBox(height: 6),
-                      _Hand(
+                      const SizedBox(height: 2),
+                      _FanHand(
                         cards: client.hand,
                         selectedCardId: _selectedCardId,
                         enabled: client.isMyTurn,
                         onSelect: (id) => setState(
                           () => _selectedCardId = _selectedCardId == id ? null : id,
                         ),
+                        onPlaySelected: _playSelected,
                       ),
-                      const SizedBox(height: 10),
                     ],
                   ),
                 ),
@@ -273,6 +275,7 @@ class _InstantDoneState extends State<_InstantDone> {
   Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
+/// Barre de score : deux panneaux d'équipe avec progression vers 41.
 class _ScoreBar extends StatelessWidget {
   final PublicState state;
   final VoidCallback onQuit;
@@ -281,36 +284,134 @@ class _ScoreBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: RondaColors.wood.withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: RondaColors.gold.withValues(alpha: 0.5)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
       child: Row(
         children: [
-          _TeamScore(team: 'A', score: state.scores['A'] ?? 0),
-          const Spacer(),
-          Column(
+          Expanded(child: _TeamPanel(team: 'A', score: state.scores['A'] ?? 0)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: RondaColors.wood.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: RondaColors.gold.withValues(alpha: 0.5)),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'MANCHE ${state.roundNumber}',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: RondaColors.goldLight,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      Text(
+                        'Donne ${state.dealIndex + 1}/3',
+                        style: const TextStyle(fontSize: 10, color: RondaColors.creamDark),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 3),
+                GestureDetector(
+                  onTap: onQuit,
+                  child: Icon(Icons.close_rounded,
+                      color: RondaColors.creamDark.withValues(alpha: 0.7), size: 18),
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: _TeamPanel(team: 'B', score: state.scores['B'] ?? 0, mirrored: true)),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeamPanel extends StatelessWidget {
+  final String team;
+  final int score;
+  final bool mirrored;
+
+  const _TeamPanel({required this.team, required this.score, this.mirrored = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = RondaColors.team(team);
+    final light = RondaColors.teamLight(team);
+    final progress = (score / 41).clamp(0.0, 1.0);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: mirrored ? Alignment.centerRight : Alignment.centerLeft,
+          end: mirrored ? Alignment.centerLeft : Alignment.centerRight,
+          colors: [color.withValues(alpha: 0.95), color.withValues(alpha: 0.55)],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: light.withValues(alpha: 0.7), width: 1.2),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 4, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: mirrored ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            textDirection: mirrored ? TextDirection.rtl : TextDirection.ltr,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                'Manche ${state.roundNumber}',
-                style: const TextStyle(fontSize: 12, color: RondaColors.creamDark),
+                'ÉQUIPE $team ',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: RondaColors.cream.withValues(alpha: 0.85),
+                  letterSpacing: 1,
+                ),
               ),
-              Text(
-                'Donne ${state.dealIndex + 1}/3',
-                style: const TextStyle(fontSize: 11, color: RondaColors.creamDark),
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: score.toDouble()),
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.easeOutCubic,
+                builder: (_, value, child) =>Text(
+                  '${value.round()}',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: RondaColors.cream,
+                    height: 1,
+                    shadows: [Shadow(color: Colors.black38, blurRadius: 3, offset: Offset(0, 1))],
+                  ),
+                ),
               ),
             ],
           ),
-          const Spacer(),
-          _TeamScore(team: 'B', score: state.scores['B'] ?? 0),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: onQuit,
-            child: const Icon(Icons.close, color: RondaColors.creamDark, size: 20),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              height: 5,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: progress),
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.easeOutCubic,
+                builder: (_, value, child) =>LinearProgressIndicator(
+                  value: value,
+                  backgroundColor: Colors.black.withValues(alpha: 0.3),
+                  valueColor: const AlwaysStoppedAnimation(RondaColors.goldLight),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -318,188 +419,301 @@ class _ScoreBar extends StatelessWidget {
   }
 }
 
-class _TeamScore extends StatelessWidget {
-  final String team;
-  final int score;
-
-  const _TeamScore({required this.team, required this.score});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(color: RondaColors.team(team), shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          '$score',
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: RondaColors.cream,
-          ),
-        ),
-        Text(
-          '/41',
-          style: TextStyle(fontSize: 12, color: RondaColors.creamDark.withValues(alpha: 0.7)),
-        ),
-      ],
-    );
-  }
-}
-
-/// Badge d'un adversaire/coéquipier : pseudo, équipe, nombre de cartes,
-/// badge d'annonce anonyme (GDD 2.5) et indicateur de tour.
+/// Badge d'un adversaire/coéquipier : avatar rond à initiale, pseudo, cartes
+/// restantes, badge d'annonce anonyme (GDD 2.5) et halo doré pulsant à son tour.
 class _SeatBadge extends StatelessWidget {
   final PublicPlayer? player;
   final PublicState state;
-  final bool vertical;
-  final Alignment alignment;
+  final bool compact;
 
-  const _SeatBadge({
-    required this.player,
-    required this.state,
-    this.vertical = false,
-    this.alignment = Alignment.center,
-  });
+  const _SeatBadge({required this.player, required this.state, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
     final p = player;
-    if (p == null) return const SizedBox(width: 60);
+    if (p == null) return SizedBox(width: compact ? 62 : 0, height: compact ? 0 : 62);
 
     final isTheirTurn = state.currentTurnPlayerId == p.id;
     final isLead = state.leadPlayerId == p.id;
+    final teamColor = RondaColors.team(p.team);
 
-    final badge = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: RondaColors.wood.withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isTheirTurn ? RondaColors.gold : RondaColors.team(p.team).withValues(alpha: 0.6),
-          width: isTheirTurn ? 2 : 1,
+    final avatar = _PulsingRing(
+      active: isTheirTurn,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [RondaColors.teamLight(p.team), teamColor],
+          ),
+          border: Border.all(
+            color: isTheirTurn ? RondaColors.goldLight : RondaColors.cream.withValues(alpha: 0.4),
+            width: 2,
+          ),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 4, offset: const Offset(0, 2)),
+          ],
         ),
-        boxShadow: isTheirTurn
-            ? [BoxShadow(color: RondaColors.gold.withValues(alpha: 0.4), blurRadius: 10)]
-            : null,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration:
-                    BoxDecoration(color: RondaColors.team(p.team), shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 5),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 80),
-                child: Text(
-                  p.nickname,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: RondaColors.cream,
-                  ),
-                ),
-              ),
-              if (isLead) ...[
-                const SizedBox(width: 4),
-                const Icon(Icons.workspace_premium, size: 13, color: RondaColors.gold),
-              ],
-            ],
+        child: Center(
+          child: Text(
+            p.nickname.isEmpty ? '?' : p.nickname[0].toUpperCase(),
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: RondaColors.cream,
+            ),
           ),
-          const SizedBox(height: 3),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.style, size: 12, color: RondaColors.creamDark),
-              const SizedBox(width: 3),
-              Text(
-                '${p.handCount}',
-                style: const TextStyle(fontSize: 12, color: RondaColors.creamDark),
-              ),
-              if (p.hasAnnouncement) ...[
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: RondaColors.gold.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: RondaColors.gold, width: 0.8),
-                  ),
-                  child: const Text(
-                    '!',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      color: RondaColors.goldLight,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
+        ),
       ),
     );
 
-    if (vertical) {
-      return Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: badge);
-    }
-    return Align(alignment: alignment, child: badge);
+    final badge = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            avatar,
+            if (isLead)
+              const Positioned(
+                top: -7,
+                right: -3,
+                child: Icon(Icons.workspace_premium, size: 16, color: RondaColors.goldLight),
+              ),
+            if (p.hasAnnouncement)
+              Positioned(
+                bottom: -3,
+                right: -5,
+                child: _AnnouncementBadge(),
+              ),
+            Positioned(
+              bottom: -3,
+              left: -5,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: RondaColors.wood,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: RondaColors.creamDark.withValues(alpha: 0.4), width: 0.8),
+                ),
+                child: Text(
+                  '${p.handCount}',
+                  style: const TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w800, color: RondaColors.cream),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 76),
+          child: Text(
+            p.nickname,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isTheirTurn ? FontWeight.w800 : FontWeight.w600,
+              color: isTheirTurn ? RondaColors.goldLight : RondaColors.cream,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 0, vertical: 2),
+      child: badge,
+    );
   }
 }
 
-class _TablePile extends StatelessWidget {
-  final List<GameCard> cards;
+/// Badge « ce joueur a annoncé quelque chose » — sans révéler quoi (GDD 2.5).
+class _AnnouncementBadge extends StatefulWidget {
+  @override
+  State<_AnnouncementBadge> createState() => _AnnouncementBadgeState();
+}
 
-  const _TablePile({required this.cards});
+class _AnnouncementBadgeState extends State<_AnnouncementBadge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (cards.isEmpty) {
-      return Center(
-        child: Container(
-          width: 70,
-          height: 100,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: RondaColors.goldLight.withValues(alpha: 0.25),
-              width: 1.5,
-            ),
-          ),
-          child: Icon(
-            Icons.filter_none,
-            color: RondaColors.goldLight.withValues(alpha: 0.25),
-          ),
-        ),
-      );
-    }
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Wrap(
-          spacing: 6,
-          runSpacing: 8,
-          alignment: WrapAlignment.center,
-          children: [
-            for (final card in cards)
-              PlayingCardWidget(key: ValueKey(card.id), card: card, width: 52),
+    return ScaleTransition(
+      scale: Tween(begin: 0.92, end: 1.12).animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+      ),
+      child: Container(
+        width: 17,
+        height: 17,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(colors: [RondaColors.goldLight, RondaColors.gold]),
+          border: Border.all(color: RondaColors.wood, width: 1),
+          boxShadow: [
+            BoxShadow(color: RondaColors.gold.withValues(alpha: 0.6), blurRadius: 6),
           ],
         ),
+        child: const Center(
+          child: Text(
+            '!',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: RondaColors.wood, height: 1),
+          ),
+        ),
       ),
+    );
+  }
+}
+
+/// Halo doré pulsant autour de l'avatar du joueur dont c'est le tour.
+class _PulsingRing extends StatefulWidget {
+  final bool active;
+  final Widget child;
+  const _PulsingRing({required this.active, required this.child});
+
+  @override
+  State<_PulsingRing> createState() => _PulsingRingState();
+}
+
+class _PulsingRingState extends State<_PulsingRing> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _controller.repeat();
+  }
+
+  @override
+  void didUpdateWidget(_PulsingRing oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !_controller.isAnimating) _controller.repeat();
+    if (!widget.active && _controller.isAnimating) _controller.stop();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.active) return widget.child;
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (_, child) {
+        final t = _controller.value;
+        return Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: RondaColors.goldLight.withValues(alpha: 0.55 * (1 - t)),
+                blurRadius: 6 + 14 * t,
+                spreadRadius: 2 + 6 * t,
+              ),
+            ],
+          ),
+          child: child,
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
+/// Tapis central en feutre : les cartes y sont éparpillées avec de légères
+/// rotations aléatoires (stables par carte) comme sur une vraie table.
+class _FeltTable extends StatelessWidget {
+  final List<GameCard> cards;
+
+  const _FeltTable({required this.cards});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+      decoration: BoxDecoration(
+        gradient: const RadialGradient(
+          colors: [Color(0x8A2E8653), Color(0x8A164F31)],
+          radius: 1.1,
+        ),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: RondaColors.gold.withValues(alpha: 0.35), width: 1.5),
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, blurRadius: 14, spreadRadius: -6),
+        ],
+      ),
+      child: cards.isEmpty
+          ? Center(
+              child: Opacity(
+                opacity: 0.35,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.style_outlined, size: 34, color: RondaColors.goldLight),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Table vide',
+                      style: TextStyle(fontSize: 12, color: RondaColors.creamDark),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : Center(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Wrap(
+                  spacing: 4,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (final card in cards) _TossedCard(key: ValueKey(card.id), card: card),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+/// Carte posée sur la table : rotation pseudo-aléatoire stable + pop d'arrivée.
+class _TossedCard extends StatelessWidget {
+  final GameCard card;
+
+  const _TossedCard({super.key, required this.card});
+
+  @override
+  Widget build(BuildContext context) {
+    // Jitter déterministe par carte pour que la table soit stable entre rebuilds.
+    final seed = card.id.hashCode;
+    final angle = ((seed % 17) - 8) * 0.016; // environ -7° à +7°
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 380),
+      curve: Curves.easeOutBack,
+      builder: (_, t, child) => Transform.scale(scale: 0.5 + 0.5 * t, child: child),
+      child: PlayingCardWidget(card: card, width: 54, angle: angle),
     );
   }
 }
@@ -516,104 +730,205 @@ class _TurnIndicator extends StatelessWidget {
     final current = state.playerById(state.currentTurnPlayerId);
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
-      child: Text(
-        key: ValueKey(state.currentTurnPlayerId),
-        isMyTurn ? 'À toi de jouer !' : 'Au tour de ${current?.nickname ?? "..."}',
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: isMyTurn ? FontWeight.w800 : FontWeight.w500,
-          color: isMyTurn ? RondaColors.goldLight : RondaColors.creamDark,
+      child: Container(
+        key: ValueKey('${state.currentTurnPlayerId}-$isMyTurn'),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+        decoration: BoxDecoration(
+          color: isMyTurn
+              ? RondaColors.gold.withValues(alpha: 0.18)
+              : Colors.black.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isMyTurn ? RondaColors.gold : Colors.transparent,
+            width: 1.2,
+          ),
+        ),
+        child: Text(
+          isMyTurn ? '✦ À TOI DE JOUER ✦' : 'Au tour de ${current?.nickname ?? "..."}',
+          style: TextStyle(
+            fontSize: isMyTurn ? 14 : 13,
+            fontWeight: isMyTurn ? FontWeight.w900 : FontWeight.w500,
+            letterSpacing: isMyTurn ? 1.2 : 0,
+            color: isMyTurn ? RondaColors.goldLight : RondaColors.creamDark,
+          ),
         ),
       ),
     );
   }
 }
 
-class _ActionBar extends StatelessWidget {
+/// Gros bouton de jeu unique : le serveur capture d'office si c'est possible
+/// (GDD 2.6) — le bouton annonce juste ce qui va se passer.
+class _PlayButton extends StatefulWidget {
   final bool visible;
-  final bool canCapture;
-  final VoidCallback onCapture;
-  final VoidCallback onPlace;
+  final bool capture;
+  final VoidCallback onPlay;
 
-  const _ActionBar({
-    required this.visible,
-    required this.canCapture,
-    required this.onCapture,
-    required this.onPlace,
-  });
+  const _PlayButton({required this.visible, required this.capture, required this.onPlay});
+
+  @override
+  State<_PlayButton> createState() => _PlayButtonState();
+}
+
+class _PlayButtonState extends State<_PlayButton> with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 150),
-      opacity: visible ? 1 : 0,
-      child: IgnorePointer(
-        ignoring: !visible,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (canCapture) ...[
-              ElevatedButton.icon(
-                onPressed: onCapture,
-                icon: const Icon(Icons.download, size: 18),
-                label: const Text('Capturer'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: RondaColors.green,
-                  foregroundColor: RondaColors.cream,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+    final gradient = widget.capture
+        ? const LinearGradient(colors: [Color(0xFFF2C94C), Color(0xFFE0902B)])
+        : const LinearGradient(colors: [Color(0xFF2E8B57), Color(0xFF1F6E43)]);
+
+    return AnimatedSlide(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutBack,
+      offset: widget.visible ? Offset.zero : const Offset(0, 1.5),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 150),
+        opacity: widget.visible ? 1 : 0,
+        child: IgnorePointer(
+          ignoring: !widget.visible,
+          child: ScaleTransition(
+            scale: widget.capture
+                ? Tween(begin: 1.0, end: 1.06)
+                    .animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut))
+                : const AlwaysStoppedAnimation(1.0),
+            child: GestureDetector(
+              onTap: widget.onPlay,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: gradient,
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.45), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (widget.capture ? const Color(0xFFF2C94C) : const Color(0xFF2E8B57))
+                          .withValues(alpha: 0.45),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      widget.capture ? Icons.bolt_rounded : Icons.arrow_upward_rounded,
+                      size: 20,
+                      color: widget.capture ? RondaColors.wood : RondaColors.cream,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      widget.capture ? 'CAPTURER !' : 'POSER',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.5,
+                        color: widget.capture ? RondaColors.wood : RondaColors.cream,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 12),
-            ],
-            OutlinedButton.icon(
-              onPressed: onPlace,
-              icon: const Icon(Icons.upload, size: 18),
-              label: Text(canCapture ? 'Poser' : 'Jouer'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              ),
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _Hand extends StatelessWidget {
+/// Main en éventail : les cartes se chevauchent en arc comme tenues en main,
+/// la carte sélectionnée se soulève ; re-taper la carte sélectionnée la joue.
+class _FanHand extends StatelessWidget {
   final List<GameCard> cards;
   final String? selectedCardId;
   final bool enabled;
   final ValueChanged<String> onSelect;
+  final VoidCallback onPlaySelected;
 
-  const _Hand({
+  const _FanHand({
     required this.cards,
     required this.selectedCardId,
     required this.enabled,
     required this.onSelect,
+    required this.onPlaySelected,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (cards.isEmpty) return const SizedBox(height: 150);
+
+    const cardWidth = 84.0;
+    final n = cards.length;
+    // Écartement horizontal : chevauchement d'autant plus fort qu'il y a de cartes.
+    final step = n == 1 ? 0.0 : math.min(56.0, 250 / (n - 1));
+    final totalWidth = cardWidth + step * (n - 1);
+    // Éventail : de -12° à +12° selon la position.
+    final maxAngle = n == 1 ? 0.0 : math.min(0.21, 0.07 * (n - 1));
+
+    // La carte sélectionnée est dessinée en dernier (au-dessus des autres).
+    final order = List<int>.generate(n, (i) => i);
+    final selIdx = cards.indexWhere((c) => c.id == selectedCardId);
+    if (selIdx != -1) {
+      order.remove(selIdx);
+      order.add(selIdx);
+    }
+
     return Opacity(
-      opacity: enabled ? 1 : 0.65,
+      opacity: enabled ? 1 : 0.75,
       child: SizedBox(
-        height: 120,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        height: 158,
+        width: double.infinity,
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.bottomCenter,
           children: [
-            for (final card in cards)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: PlayingCardWidget(
-                  key: ValueKey(card.id),
-                  card: card,
-                  width: 68,
-                  selected: card.id == selectedCardId,
-                  onTap: enabled ? () => onSelect(card.id) : null,
-                ),
-              ),
+            for (final i in order)
+              _fanCard(context, i, n, step, totalWidth, cardWidth, maxAngle),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fanCard(BuildContext context, int i, int n, double step, double totalWidth,
+      double cardWidth, double maxAngle) {
+    final card = cards[i];
+    final selected = card.id == selectedCardId;
+    final t = n == 1 ? 0.5 : i / (n - 1);
+    final angle = (t - 0.5) * 2 * maxAngle;
+    // L'arc : les cartes du bord descendent légèrement.
+    final arcDrop = (1 - math.cos(angle)) * 260;
+    final lift = selected ? -30.0 : 0.0;
+
+    return Positioned(
+      left: (MediaQuery.of(context).size.width - totalWidth) / 2 + i * step,
+      bottom: 8.0 - arcDrop - lift,
+      child: GestureDetector(
+        onTap: !enabled
+            ? null
+            : () => selected ? onPlaySelected() : onSelect(card.id),
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutBack,
+          scale: selected ? 1.10 : 1.0,
+          child: PlayingCardWidget(
+            card: card,
+            width: cardWidth,
+            selected: selected,
+            angle: selected ? 0 : angle,
+          ),
         ),
       ),
     );
