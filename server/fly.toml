@@ -1,0 +1,22 @@
+# fly.toml app configuration file generated for ronda-server on 2026-07-12T23:49:43+02:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'ronda-server'
+primary_region = 'cdg'
+
+[build]
+[env]
+  PORT = '2567'
+
+[http_service]
+  internal_port = 2567
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'
