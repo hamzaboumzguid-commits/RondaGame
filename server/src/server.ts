@@ -48,7 +48,7 @@ export function createGameServer(): GameServer {
       switch (msg.type) {
         case "create": {
           if (room) return;
-          room = manager.createRoom();
+          room = manager.createRoom(msg.mode === "1v1" ? "1v1" : "2v2");
           const res = room.join(playerId, msg.nickname, conn);
           if (res.ok) {
             conn.send({ type: "joined", roomCode: room.roomCode, playerId, state: room.publicState() });

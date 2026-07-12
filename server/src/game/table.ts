@@ -12,7 +12,24 @@ export class Table {
    * cartes accumulées dans le paquet — le prochain surenchérisseur emporte tout.
    * Remise à null dès qu'un joueur fait autre chose que répondre avec la même valeur.
    */
-  private derbaChain: { rank: Card["rank"]; derbaTier: DerbaTier; chainCards: Card[] } | null = null;
+  private derbaChain: {
+    rank: Card["rank"];
+    derbaTier: DerbaTier;
+    chainCards: Card[];
+    /**
+     * La Derba initiale a-t-elle vidé la table (Missa) ? Le point de Missa
+     * voyage avec le paquet : chaque surenchérisseur le reprend avec le reste.
+     */
+    hasMissa: boolean;
+  } | null = null;
+
+  /**
+   * Cartes du paquet de Derba en attente de surenchère — affichées sur la
+   * table côté client tant que le joueur suivant n'a pas joué.
+   */
+  get pendingChainCards(): Card[] {
+    return this.derbaChain ? [...this.derbaChain.chainCards] : [];
+  }
 
   /**
    * Valeur de la carte POSÉE au coup précédent (null si le coup précédent était
@@ -49,7 +66,10 @@ export class Table {
       const tier: DerbaTier = this.derbaChain.derbaTier === 1 ? 2 : 3;
       const reclaimed = [...this.derbaChain.chainCards];
       const cardsCaptured = [...reclaimed, card];
-      this.derbaChain = tier < 3 ? { rank: card.rank, derbaTier: tier, chainCards: cardsCaptured } : null;
+      // La Missa de la Derba initiale suit le paquet : le surenchérisseur la reprend.
+      const hasMissa = this.derbaChain.hasMissa;
+      this.derbaChain =
+        tier < 3 ? { rank: card.rank, derbaTier: tier, chainCards: cardsCaptured, hasMissa } : null;
       this.justPosedRank = null;
       return {
         byPlayerId: player.id,
@@ -58,7 +78,7 @@ export class Table {
         playedCard: card,
         isDerba: true,
         derbaTier: tier,
-        isMissa: false, // la table n'est pas touchée par la surenchère
+        isMissa: hasMissa,
         reclaimedCards: reclaimed,
       };
     }
@@ -78,7 +98,9 @@ export class Table {
     const cardsCaptured = [...captured, card];
     const isMissa = this.pile.length === 0;
 
-    this.derbaChain = isDerba ? { rank: card.rank, derbaTier: 1, chainCards: cardsCaptured } : null;
+    this.derbaChain = isDerba
+      ? { rank: card.rank, derbaTier: 1, chainCards: cardsCaptured, hasMissa: isMissa }
+      : null;
     this.justPosedRank = null;
 
     return {

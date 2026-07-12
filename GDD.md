@@ -68,7 +68,9 @@ Sens horaire, en commençant par le joueur à la droite du Lead. Le Lead joue do
 - **Plafond à 3 Derbas en chaîne (max 10 pts)** : avec 4 exemplaires par valeur dans le jeu (1 posée + 3 réponses possibles), la chaîne ne peut pas aller plus loin.
 - La chaîne se rompt dès qu'un joueur ne répond pas immédiatement avec la même valeur (autre action = fin de la chaîne, dernière Derba valide conservée).
 - **Derba ≠ capture ordinaire** : capturer une carte posée plusieurs tours auparavant n'est pas une Derba — seule la carte que le joueur précédent *vient* de poser compte.
-- **Le paquet suit la surenchère** : le surenchérisseur emporte toutes les cartes de la chaîne (y compris celles déjà ramassées par la Derba précédente et son éventuelle suite) — elles comptent dans le butin de son équipe. La surenchère ne touche pas la table, elle ne peut donc pas déclencher de Missa.
+- **Le paquet suit la surenchère** : le surenchérisseur emporte toutes les cartes de la chaîne (y compris celles déjà ramassées par la Derba précédente et son éventuelle suite) — elles comptent dans le butin de son équipe. **La Missa aussi voyage avec le paquet** : si la Derba initiale a vidé la table (+1 Missa), chaque surenchérisseur reprend ce point avec le reste (décision 2026-07-12).
+- **Affichage** : tant que la surenchère est possible, le paquet de la Derba reste affiché sur la table (halo doré « surenchère ? ») — il n'est visuellement ramassé que lorsque la chaîne se rompt.
+- **Vocabulaire à l'écran** : 1ère Derba = « DERBA ! », 1ère surenchère = « 7BIYEL ! », 2e surenchère (max) = « JOUJ 7BOULA ! ».
 
 ### 2.8 La Missa
 
@@ -142,7 +144,17 @@ Exclus explicitement de la v1 : chat (texte/vocal/emoji), historique/scoreboard 
 - Chaque joueur dispose de **10 secondes** pour jouer. Passé ce délai, le serveur joue d'office **la carte la plus à gauche** de sa main (capture obligatoire appliquée normalement).
 - Compte à rebours visible par tous (anneau autour de l'avatar du joueur courant, barre au-dessus de la main pour soi).
 
-### 3.5 Animations (Derba / Missa)
+### 3.5 Vocabulaire à l'écran (darija)
+- Donne = **TFRI9A**, Manche = **TER7**, écran de révélation = **« WACH KAYN CHI RWANED ? »**.
+- Fin de ter7 : si le Lead n'a pas fait la dernière prise, animation triste **« MAJEBTICH 9A3TEK »** (mutuellement exclusive avec les animations Roi/As, qui priment).
+
+### 3.6 Mode 1v1
+- Sélectionné par l'hôte à la création de la room (2 joueurs exactement).
+- Distribution : **5 tfri9at de 4 cartes chacun** (40 cartes par ter7, 20 cartes de butin potentiel chacun).
+- Rondas : la règle « 4 rondas → la plus petite gagne » ne s'applique jamais. Quelle que soit la quantité annoncée, **la plus grande ronda l'emporte** et rapporte autant de points que de rondas annoncées (2, 3 ou 4). Égalité entre les meilleures → annulation. Tringa inchangée.
+- Tout le reste (Derba, Missa, butin, dernière prise, 41 points) est identique.
+
+### 3.7 Animations (Derba / Missa)
 - **Bloquantes courtes (1-2s max)** : chaque déclenchement marque une pause volontaire pour créer l'impact, sans casser le rythme global.
 - **Derba** : escalade visuelle sur les 3 paliers.
   - Palier 1 (1 pt) : effet léger, flash/glow discret sur les cartes concernées.
@@ -168,5 +180,6 @@ Exclus explicitement de la v1 : chat (texte/vocal/emoji), historique/scoreboard 
 - 2026-07-11 : recueil de besoin initial complet (règles clarifiées, scope v1 figé, style visuel marocain choisi, pas d'auth/compte, pas de reconnexion en v1). Document créé.
 - 2026-07-11 : stack validée (Flutter + Colyseus), scaffolding, moteur de règles testé (29 tests).
 - 2026-07-11 : pivot backend Colyseus → WebSocket pur + JSON (pas de client Dart pour Colyseus). Fin de partie immédiate à 41 pts implémentée (vérification après chaque attribution de points, pas seulement en fin de manche). App Flutter v1 complète : accueil, lobby, table de jeu, animations Derba (3 paliers)/Missa, victoire. E2E validé : 4 clients Flutter réels jouent une partie complète contre le serveur.
+- 2026-07-12 (ter) : troisième passe de feedback. Corrections : resync de la main après chaque coup (cartes fantômes après auto-jeu du timer), gros compteur de secondes pour le joueur courant, **la Missa voyage avec la surenchère de Derba** et le paquet reste affiché sur la table en attente. Ajouts : **mode 1v1** (choix à la création, 5 tfri9at de 4, rondas plus-grande-gagne), animation de distribution par le Lead, animation MAJEBTICH 9A3TEK, vocabulaire darija (TFRI9A, TER7, WACH KAYN CHI RWANED ?, 7BIYEL !, JOUJ 7BOULA !).
 - 2026-07-12 (bis) : deuxième passe de feedback. Pastille d'annonce : révèle désormais RONDA vs TRINGA (pas la valeur). Timer de tour de 10 s avec auto-jeu de la carte la plus à gauche (section 3.4). Animations de dernière capture (Roi = célébration, As = déception). Police display « Lilita One » (OFL), tout le texte en majuscules. Direction artistique : assets nano-banana-2 (cartes, fonds, dos) + UI « chunky » façon Caveboy Escape.
 - 2026-07-12 : premier test utilisateur. Trois corrections de règles : (1) **capture obligatoire sur jumelle** — interdit de poser une carte à côté d'une carte de même valeur (clarifié avec l'utilisateur) ; (2) la **suite ascendante** se lit sur les valeurs présentes sur la table, pas sur l'ordre de pose (bug : un 4 laissait le 5 et le 6) ; (3) la **surenchère de Derba** était injouable (la réponse tombait sur table vide et cassait la chaîne) — corrigée, et décision utilisateur : le surenchérisseur emporte tout le paquet de la chaîne (butin). Une Derba exige la carte *juste* posée, pas une carte ancienne. Le choix capturer/poser disparaît du protocole et de l'UI (le serveur capture d'office).

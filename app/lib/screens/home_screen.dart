@@ -23,6 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _nicknameController = TextEditingController();
   final _codeController = TextEditingController();
   bool _busy = false;
+  String _mode = '2v2';
 
   @override
   void dispose() {
@@ -42,7 +43,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _showError(_nicknameError!);
       return;
     }
-    await _perform(() => context.read<GameClient>().createRoom(_nicknameController.text.trim()));
+    await _perform(
+      () => context.read<GameClient>().createRoom(_nicknameController.text.trim(), mode: _mode),
+    );
   }
 
   Future<void> _joinRoom() async {
@@ -154,7 +157,31 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 14),
+
+                    // Choix du mode de jeu avant la création.
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _ModeChip(
+                            label: '2 VS 2',
+                            icon: Icons.groups_rounded,
+                            selected: _mode == '2v2',
+                            onTap: () => setState(() => _mode = '2v2'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _ModeChip(
+                            label: '1 VS 1',
+                            icon: Icons.sports_kabaddi_rounded,
+                            selected: _mode == '1v1',
+                            onTap: () => setState(() => _mode = '1v1'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
 
                     ChunkyButton.red(
                       label: 'CRÉER UNE PARTIE',
@@ -300,6 +327,76 @@ class _ParchmentField extends StatelessWidget {
               ),
             ),
             if (icon != null) SizedBox(width: fontSize + 18), // équilibre le centrage
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Puce de sélection de mode : planche claire, dorée quand sélectionnée.
+class _ModeChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ModeChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: selected
+                ? const [Color(0xFFF6D571), Color(0xFFE0A32B)]
+                : const [Color(0xFFF4E3BC), Color(0xFFDCC393)],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: const Color(0xFF3A2417),
+            width: selected ? 3 : 2,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFFF2C94C).withValues(alpha: 0.55),
+                    blurRadius: 12,
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 4,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 20, color: const Color(0xFF4A2E15)),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.2,
+                color: const Color(0xFF4A2E15).withValues(alpha: selected ? 1 : 0.6),
+              ),
+            ),
           ],
         ),
       ),

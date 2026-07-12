@@ -4,8 +4,15 @@ import { Announcement, Rank, RANK_ORDER, TeamId, rankIndex } from "./types.js";
  * Résolution des Rondas/Tringas en fin de petite manche (GDD 2.5, 2.9).
  * Reçoit toutes les annonces de la petite manche (une par joueur ayant une paire/brelan en main),
  * retourne les points par équipe.
+ *
+ * En mode 1v1 (GDD 3.6), la règle « 4 Rondas -> la plus petite gagne » ne
+ * s'applique jamais : quelle que soit la quantité, la plus GRANDE Ronda
+ * l'emporte et rapporte autant de points que de Rondas annoncées.
  */
-export function resolveRondaTringa(announcements: Announcement[]): Partial<Record<TeamId, number>> {
+export function resolveRondaTringa(
+  announcements: Announcement[],
+  mode: "2v2" | "1v1" = "2v2",
+): Partial<Record<TeamId, number>> {
   const points: Partial<Record<TeamId, number>> = {};
   if (announcements.length === 0) return points;
 
@@ -29,7 +36,7 @@ export function resolveRondaTringa(announcements: Announcement[]): Partial<Recor
     return points;
   }
 
-  if (rondas.length === 2 || rondas.length === 3) {
+  if (rondas.length === 2 || rondas.length === 3 || mode === "1v1") {
     const winner = pickHighestUnique(rondas);
     if (winner) {
       points[winner.team] = (points[winner.team] ?? 0) + rondas.length;

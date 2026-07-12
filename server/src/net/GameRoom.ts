@@ -12,10 +12,16 @@ import {
 } from "../game/types.js";
 import { PublicState, ServerMessage, RevealedAnnouncement } from "./protocol.js";
 
-const MAX_PLAYERS = 4;
-const DEAL_SIZES = [4, 3, 3] as const;
 /** Temps de réflexion par tour : passé ce délai, la carte la plus à gauche est jouée d'office. */
 export const TURN_TIMEOUT_MS = 10_000;
+
+export type GameMode = "2v2" | "1v1";
+
+/** Donnes par manche : 4-3-3 à 4 joueurs, 5×4 en 1v1 (GDD 2.3 / 3.6). */
+const DEAL_SIZES_BY_MODE: Record<GameMode, readonly number[]> = {
+  "2v2": [4, 3, 3],
+  "1v1": [4, 4, 4, 4, 4],
+};
 
 /** Abstraction de la connexion sortante — une vraie socket ws en prod, un stub en test. */
 export interface PlayerConnection {
@@ -40,6 +46,7 @@ export type RoomPhase = "lobby" | "playing" | "reveal" | "roundEnd" | "gameOver"
  */
 export class GameRoom {
   readonly roomCode: string;
+  readonly mode: GameMode;
   phase: RoomPhase = "lobby";
 
   private players: RoomPlayer[] = [];
@@ -48,12 +55,12 @@ export class GameRoom {
   private table = new Table();
   private leadSeat: PlayerSeat = 0;
   private roundNumber = 0;
-  private dealIndex: 0 | 1 | 2 = 0;
+  private dealIndex = 0;
   private turnOrder: PlayerSeat[] = [];
   private turnIdx = 0;
   private announcements: Announcement[] = [];
   private capturedByTeam: Record<TeamId, Card[]> = { A: [], B: [] };
-  private lastCapture: { card: Card; team: TeamId } | null = null;
+  private lastCapture: { card: Card; team: TeamId; playerId: string } | null = null;
   private scores: Record<TeamId, number> = { A: 0, B: 0 };
   private winningTeam: TeamId | "" = "";
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
@@ -62,15 +69,24 @@ export class GameRoom {
   /** Appelé quand la room doit être détruite (partie finie ou abandonnée). */
   onDispose: () => void = () => {};
 
-  constructor(roomCode: string) {
+  constructor(roomCode: string, mode: GameMode = "2v2") {
     this.roomCode = roomCode;
+    this.mode = mode;
+  }
+
+  private get maxPlayers(): number {
+    return this.mode === "1v1" ? 2 : 4;
+  }
+
+  private get dealSizes(): readonly number[] {
+    return DEAL_SIZES_BY_MODE[this.mode];
   }
 
   // ---------- Lobby ----------
 
   join(id: string, nickname: string, conn: PlayerConnection): { ok: true } | { ok: false; error: string } {
     if (this.phase !== "lobby") return { ok: false, error: "La partie a déjà commencé" };
-    if (this.players.length >= MAX_PLAYERS) return { ok: false, error: "Room complète" };
+    if (this.players.length >= this.maxPlayers) return { ok: false, error: "Room complète" };
 
     const seat = this.nextFreeSeat();
     const player: RoomPlayer = {
@@ -117,7 +133,8 @@ export class GameRoom {
     if (!player) return;
     if (player.team === team) return;
 
-    const teamSeats: PlayerSeat[] = team === "A" ? [0, 2] : [1, 3];
+    const teamSeats: PlayerSeat[] =
+      this.mode === "1v1" ? (team === "A" ? [0] : [1]) : team === "A" ? [0, 2] : [1, 3];
     const freeSeat = teamSeats.find((s) => !this.players.some((p) => p.id !== id && p.seat === s));
     if (freeSeat === undefined) {
       this.sendTo(id, { type: "error", code: "teamFull", message: "Cette équipe est complète" });
@@ -135,8 +152,12 @@ export class GameRoom {
       this.sendTo(id, { type: "error", code: "notHost", message: "Seul l'hôte peut lancer la partie" });
       return;
     }
-    if (this.players.length !== MAX_PLAYERS) {
-      this.sendTo(id, { type: "error", code: "notFull", message: "Il faut 4 joueurs pour commencer" });
+    if (this.players.length !== this.maxPlayers) {
+      this.sendTo(id, {
+        type: "error",
+        code: "notFull",
+        message: `Il faut ${this.maxPlayers} joueurs pour commencer`,
+      });
       return;
     }
 
@@ -159,13 +180,13 @@ export class GameRoom {
   }
 
   private dealNext(): void {
-    const size = DEAL_SIZES[this.dealIndex];
+    const size = this.dealSizes[this.dealIndex];
     for (const player of this.playersBySeat()) {
       player.hand = this.deck.splice(0, size);
     }
     this.announcements = this.detectAnnouncements();
 
-    this.turnOrder = this.rotationFrom(firstPlayerSeat(this.leadSeat));
+    this.turnOrder = this.rotationFrom(firstPlayerSeat(this.leadSeat, this.maxPlayers));
     this.turnIdx = 0;
     this.phase = "playing";
     this.armTurnTimer();
@@ -241,14 +262,15 @@ export class GameRoom {
         this.capturedByTeam[this.otherTeam(event.byTeam)] = opposing.filter((c) => !reclaimedIds.has(c.id));
       }
       this.capturedByTeam[event.byTeam].push(...event.cardsCaptured);
-      this.lastCapture = { card: event.playedCard, team: event.byTeam };
+      this.lastCapture = { card: event.playedCard, team: event.byTeam, playerId: event.byPlayerId };
 
       const points = DERBA_POINTS[event.derbaTier] + (event.isMissa ? 1 : 0);
       // Une nouvelle Derba en chaîne annule les points de la précédente (GDD 2.7) :
-      // on retire les points du palier précédent avant d'ajouter le nouveau.
+      // palier précédent + Missa éventuelle (elle voyage avec le paquet).
       if (event.isDerba && event.derbaTier > 1) {
         const prevTier = (event.derbaTier - 1) as 1 | 2;
-        this.scores[this.otherTeam(event.byTeam)] -= DERBA_POINTS[prevTier];
+        this.scores[this.otherTeam(event.byTeam)] -=
+          DERBA_POINTS[prevTier] + (event.isMissa ? 1 : 0);
       }
       if (points > 0) {
         this.addPoints(event.byTeam, points);
@@ -271,6 +293,10 @@ export class GameRoom {
       this.broadcast({ type: "cardPlaced", playerId: id, card });
     }
 
+    // Resynchronise la main du joueur (indispensable pour l'auto-jeu du timer :
+    // sans ça, la carte jouée d'office resterait affichée dans sa main).
+    player.conn.send({ type: "yourHand", cards: [...player.hand] });
+
     this.advanceTurn();
   }
 
@@ -290,7 +316,7 @@ export class GameRoom {
 
   private endSubRound(): void {
     this.clearTurnTimer();
-    const points = resolveRondaTringa(this.announcements);
+    const points = resolveRondaTringa(this.announcements, this.mode);
     for (const team of ["A", "B"] as TeamId[]) {
       if (points[team]) this.addPoints(team, points[team]!);
     }
@@ -307,8 +333,8 @@ export class GameRoom {
 
     if (this.checkImmediateWin()) return;
 
-    if (this.dealIndex < 2) {
-      this.dealIndex = (this.dealIndex + 1) as 1 | 2;
+    if (this.dealIndex < this.dealSizes.length - 1) {
+      this.dealIndex++;
       this.dealNext();
     } else {
       this.endRound();
@@ -336,6 +362,11 @@ export class GameRoom {
       lastCapture: this.lastCapture
         ? { rank: this.lastCapture.card.rank, team: this.lastCapture.team }
         : null,
+      // Le Lead est censé conclure (GDD 2.2) : s'il rate la dernière prise,
+      // le client joue l'animation MAJEBTICH 9A3TEK.
+      leadMissedLastCapture:
+        this.lastCapture !== null &&
+        this.lastCapture.playerId !== (this.players.find((p) => p.seat === this.leadSeat)?.id ?? ""),
     });
 
     // Butin appliqué avant le bonus de dernière capture ; le premier à franchir 41 gagne.
@@ -351,7 +382,7 @@ export class GameRoom {
     this.phase = "roundEnd";
     this.broadcastState();
 
-    this.leadSeat = nextLead(this.leadSeat);
+    this.leadSeat = nextLead(this.leadSeat, this.maxPlayers);
     this.startRound();
   }
 
@@ -384,7 +415,7 @@ export class GameRoom {
   }
 
   private nextFreeSeat(): PlayerSeat {
-    for (let s = 0; s < 4; s++) {
+    for (let s = 0; s < this.maxPlayers; s++) {
       if (!this.players.some((p) => p.seat === s)) return s as PlayerSeat;
     }
     throw new Error("Room pleine");
@@ -395,7 +426,8 @@ export class GameRoom {
   }
 
   private rotationFrom(startSeat: PlayerSeat): PlayerSeat[] {
-    return [0, 1, 2, 3].map((i) => ((startSeat + i) % 4) as PlayerSeat);
+    const n = this.maxPlayers;
+    return Array.from({ length: n }, (_, i) => ((startSeat + i) % n) as PlayerSeat);
   }
 
   publicState(): PublicState {
@@ -410,6 +442,8 @@ export class GameRoom {
     return {
       phase: this.phase,
       roomCode: this.roomCode,
+      mode: this.mode,
+      dealsPerRound: this.dealSizes.length,
       players: this.playersBySeat().map((p) => ({
         id: p.id,
         nickname: p.nickname,
@@ -420,6 +454,8 @@ export class GameRoom {
         isHost: p.id === this.hostId,
       })),
       tablePile: [...this.table.pile],
+      // Paquet de Derba en attente de surenchère, affiché sur la table (GDD 2.7).
+      pendingDerba: this.phase === "playing" ? this.table.pendingChainCards : [],
       leadPlayerId: this.players.find((p) => p.seat === this.leadSeat)?.id ?? "",
       currentTurnPlayerId: this.phase === "playing" ? this.currentPlayer()?.id ?? "" : "",
       turnEndsAt: this.phase === "playing" ? this.turnEndsAt : 0,

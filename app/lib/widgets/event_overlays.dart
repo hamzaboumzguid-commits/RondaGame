@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/protocol.dart';
 import '../theme.dart';
+import 'playing_card.dart';
 
 /// Durées des animations bloquantes (GDD 3.5 : 1-2s max).
 const kDerbaTier1Duration = Duration(milliseconds: 1100);
@@ -13,6 +14,7 @@ const kMissaDuration = Duration(milliseconds: 1100);
 const kRevealDuration = Duration(milliseconds: 3000);
 const kRoundEndDuration = Duration(milliseconds: 3000);
 const kLastCaptureDuration = Duration(milliseconds: 1700);
+const kDealDuration = Duration(milliseconds: 1800);
 
 // ---------------------------------------------------------------------------
 // Langage visuel commun : tous les événements utilisent le même vocabulaire
@@ -161,7 +163,8 @@ class _DerbaOverlayState extends State<DerbaOverlay> with SingleTickerProviderSt
                   child: Transform.scale(
                     scale: scale,
                     child: _JuicyText(
-                      label: switch (tier) { 1 => 'DERBA !', 2 => 'DERBA ×2 !', _ => 'DERBA\nROYALE !' },
+                      // Surenchères en darija : 7BIYEL puis JOUJ 7BOULA (GDD 2.7).
+                      label: switch (tier) { 1 => 'DERBA !', 2 => '7BIYEL !', _ => 'JOUJ\n7BOULA !' },
                       sub: '+${widget.points} PTS · ${widget.playerNickname.toUpperCase()}',
                       fontSize: switch (tier) { 1 => 46, 2 => 56, _ => 66 },
                     ),
@@ -357,7 +360,7 @@ class _RevealOverlayState extends State<RevealOverlay> {
     final anns = widget.event.announcements;
     final points = widget.event.points;
     return _AnnouncementPanel(
-      title: anns.isEmpty ? 'FIN DE LA DONNE' : 'RÉVÉLATION !',
+      title: anns.isEmpty ? 'FIN DE LA TFRI9A' : 'WACH KAYN CHI RWANED ?',
       icon: anns.isEmpty ? Icons.style_rounded : Icons.celebration_rounded,
       children: [
         if (anns.isEmpty)
@@ -410,13 +413,19 @@ class RoundEndOverlay extends StatefulWidget {
 class _RoundEndOverlayState extends State<RoundEndOverlay> {
   late bool _showingLastCapture;
 
-  bool get _hasSpecialCapture =>
-      widget.event.lastCaptureRank == 12 || widget.event.lastCaptureRank == 1;
+  /// Les trois cas sont mutuellement exclusifs : dernière prise au Roi,
+  /// dernière prise à l'As, ou le Lead qui n'a pas conclu (MAJEBTICH).
+  _LastCaptureKind? get _specialKind {
+    if (widget.event.lastCaptureRank == 12) return _LastCaptureKind.king;
+    if (widget.event.lastCaptureRank == 1) return _LastCaptureKind.ace;
+    if (widget.event.leadMissedLastCapture) return _LastCaptureKind.leadMissed;
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
-    _showingLastCapture = _hasSpecialCapture;
+    _showingLastCapture = _specialKind != null;
     _scheduleNext();
   }
 
@@ -438,14 +447,14 @@ class _RoundEndOverlayState extends State<RoundEndOverlay> {
   Widget build(BuildContext context) {
     if (_showingLastCapture) {
       return _LastCaptureOverlay(
-        isKing: widget.event.lastCaptureRank == 12,
+        kind: _specialKind!,
         team: widget.event.lastCaptureTeam ?? 'A',
       );
     }
 
     final e = widget.event;
     return _AnnouncementPanel(
-      title: 'FIN DE LA MANCHE',
+      title: 'FIN DU TER7',
       icon: Icons.emoji_events_rounded,
       children: [
         _PanelRow(
@@ -481,13 +490,124 @@ class _RoundEndOverlayState extends State<RoundEndOverlay> {
   }
 }
 
-/// Animation dédiée à la dernière capture : Roi = triomphe doré,
-/// As = douche froide bleutée.
+/// Animation de distribution : le Lead envoie les cartes face cachée vers
+/// chaque joueur (bas = soi, haut = en face, côtés en 2v2), puis la main
+/// se dévoile quand l'overlay se retire.
+class DealOverlay extends StatefulWidget {
+  final String dealerName;
+  final int cardsPerPlayer;
+  final int dealIndex;
+  final int dealsPerRound;
+  final int playerCount; // 2 ou 4
+  final VoidCallback onDone;
+
+  const DealOverlay({
+    super.key,
+    required this.dealerName,
+    required this.cardsPerPlayer,
+    required this.dealIndex,
+    required this.dealsPerRound,
+    required this.playerCount,
+    required this.onDone,
+  });
+
+  @override
+  State<DealOverlay> createState() => _DealOverlayState();
+}
+
+class _DealOverlayState extends State<DealOverlay> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: kDealDuration)
+      ..addStatusListener((status) {
+        if (status == AnimationStatus.completed) widget.onDone();
+      })
+      ..forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Directions d'envol depuis le centre : bas (moi), haut, gauche, droite.
+    final directions = widget.playerCount == 2
+        ? const [Offset(0, 1), Offset(0, -1)]
+        : const [Offset(0, 1), Offset(0, -1), Offset(-1, 0), Offset(1, 0)];
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final t = _controller.value;
+        final veil = t < 0.12 ? t / 0.12 : (t < 0.85 ? 1.0 : 1 - (t - 0.85) / 0.15);
+        final totalCards = widget.cardsPerPlayer * directions.length;
+
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: Opacity(
+                opacity: (veil * 0.5).clamp(0, 1),
+                child: const ColoredBox(color: Colors.black),
+              ),
+            ),
+            // Cartes distribuées une à une, en tournoyant vers chaque joueur.
+            ...List.generate(totalCards, (i) {
+              final dir = directions[i % directions.length];
+              // Départ étalé sur 70% de l'animation, vol sur 30%.
+              final start = (i / totalCards) * 0.65;
+              final flight = ((t - start) / 0.3).clamp(0.0, 1.0);
+              if (flight <= 0) return const SizedBox.shrink();
+              final eased = Curves.easeOutCubic.transform(flight);
+              final screen = MediaQuery.of(context).size;
+              final target = Offset(
+                dir.dx * screen.width * 0.42,
+                dir.dy * screen.height * 0.38,
+              );
+              return Positioned(
+                left: screen.width / 2 - 21 + target.dx * eased,
+                top: screen.height / 2 - 32 + target.dy * eased,
+                child: Opacity(
+                  opacity: flight < 0.85 ? 1 : 1 - (flight - 0.85) / 0.15,
+                  child: Transform.rotate(
+                    angle: eased * 2.4 + i * 0.4,
+                    child: const CardBackWidget(width: 42),
+                  ),
+                ),
+              );
+            }),
+            Align(
+              alignment: const Alignment(0, -0.45),
+              child: Opacity(
+                opacity: veil.clamp(0, 1),
+                child: _JuicyText(
+                  label: 'TFRI9A ${widget.dealIndex + 1}/${widget.dealsPerRound}',
+                  sub: '${widget.dealerName.toUpperCase()} DISTRIBUE',
+                  fontSize: 40,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+enum _LastCaptureKind { king, ace, leadMissed }
+
+/// Animation dédiée à la fin du ter7 : Roi = triomphe doré,
+/// As = douche froide bleutée, Lead qui rate la dernière prise = MAJEBTICH.
 class _LastCaptureOverlay extends StatefulWidget {
-  final bool isKing;
+  final _LastCaptureKind kind;
   final String team;
 
-  const _LastCaptureOverlay({required this.isKing, required this.team});
+  const _LastCaptureOverlay({required this.kind, required this.team});
 
   @override
   State<_LastCaptureOverlay> createState() => _LastCaptureOverlayState();
@@ -515,7 +635,7 @@ class _LastCaptureOverlayState extends State<_LastCaptureOverlay>
         final veil = t < 0.15 ? t / 0.15 : (t < 0.85 ? 1.0 : 1 - (t - 0.85) / 0.15);
         final scale = Curves.elasticOut.transform(math.min(1, t * 1.8));
 
-        if (widget.isKing) {
+        if (widget.kind == _LastCaptureKind.king) {
           // Triomphe : voile chaud, double onde, confettis dorés, couronne.
           return Stack(
             children: [
@@ -565,7 +685,9 @@ class _LastCaptureOverlayState extends State<_LastCaptureOverlay>
           );
         }
 
-        // Déception : voile bleu froid, pluie de confettis gris qui tombent.
+        // Déception (As ou Lead qui rate la dernière prise) : voile froid,
+        // pluie triste, texte qui s'affaisse.
+        final isAce = widget.kind == _LastCaptureKind.ace;
         final droop = Curves.easeIn.transform(t) * 26;
         return Stack(
           children: [
@@ -597,16 +719,20 @@ class _LastCaptureOverlayState extends State<_LastCaptureOverlay>
                     children: [
                       Transform.rotate(
                         angle: 0.15 * t,
-                        child: const Icon(
-                          Icons.heart_broken_rounded,
+                        child: Icon(
+                          isAce
+                              ? Icons.heart_broken_rounded
+                              : Icons.sentiment_very_dissatisfied_rounded,
                           size: 74,
-                          color: Color(0xFF9FB4CC),
-                          shadows: [Shadow(color: Colors.black87, blurRadius: 14)],
+                          color: const Color(0xFF9FB4CC),
+                          shadows: const [Shadow(color: Colors.black87, blurRadius: 14)],
                         ),
                       ),
                       _JuicyText(
-                        label: 'AÏE... L\'AS !',
-                        sub: 'DERNIÈRE PRISE À L\'AS · +5 PTS POUR L\'ADVERSAIRE',
+                        label: isAce ? 'AÏE... L\'AS !' : 'MAJEBTICH\n9A3TEK !',
+                        sub: isAce
+                            ? 'DERNIÈRE PRISE À L\'AS · +5 PTS POUR L\'ADVERSAIRE'
+                            : 'LE LEAD N\'A PAS FAIT LA DERNIÈRE PRISE...',
                         fontSize: 44,
                         gradient: const [Color(0xFFD4E2F4), Color(0xFF8FA9C8), Color(0xFF5A7396)],
                       ),

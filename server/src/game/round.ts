@@ -47,14 +47,21 @@ export function mergePoints(
   return result;
 }
 
-export function nextLead(currentLeadSeat: PlayerState["seat"]): PlayerState["seat"] {
+export function nextLead(
+  currentLeadSeat: PlayerState["seat"],
+  playerCount = 4,
+): PlayerState["seat"] {
   // Le Lead passe au joueur à sa droite (GDD 2.2). Sièges 0->3->2->1->0 en "droite" si le jeu
   // tourne en sens horaire 0->1->2->3 (cf. GDD 2.4 : le jeu se déroule sens horaire à partir
-  // du joueur à droite du Lead). La droite du siège N est donc (N + 3) % 4 = (N - 1) % 4.
-  return (((currentLeadSeat + 3) % 4) as PlayerState["seat"]);
+  // du joueur à droite du Lead). La droite du siège N est donc (N - 1) mod n.
+  // En 1v1 (n=2), le Lead alterne simplement entre les deux joueurs.
+  return (((currentLeadSeat + playerCount - 1) % playerCount) as PlayerState["seat"]);
 }
 
-export function firstPlayerSeat(leadSeat: PlayerState["seat"]): PlayerState["seat"] {
-  // Le jeu commence par le joueur à la droite du Lead (GDD 2.4), donc le siège opposé à nextLead.
-  return (((leadSeat + 1) % 4) as PlayerState["seat"]);
+export function firstPlayerSeat(
+  leadSeat: PlayerState["seat"],
+  playerCount = 4,
+): PlayerState["seat"] {
+  // Le jeu commence de sorte que le Lead joue en dernier dans l'ordre du tour (GDD 2.4).
+  return (((leadSeat + 1) % playerCount) as PlayerState["seat"]);
 }

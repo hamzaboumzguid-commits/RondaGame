@@ -96,7 +96,8 @@ describe("Table.play — Derba et surenchère", () => {
     // C emporte le paquet : les 2 cartes de B + la sienne.
     expect(ev!.cardsCaptured.map((c) => c.id).sort()).toEqual(["copas_4", "espadas_4", "oros_4"]);
     expect(ev!.reclaimedCards.map((c) => c.id).sort()).toEqual(["copas_4", "oros_4"]);
-    expect(ev!.isMissa).toBe(false); // la surenchère ne vide pas la table
+    // La Derba de B avait vidé la table (Missa) : la surenchère reprend aussi la Missa.
+    expect(ev!.isMissa).toBe(true);
   });
 
   it("surenchère max : palier 3 avec les 4 exemplaires, tout le paquet au dernier", () => {
@@ -108,6 +109,25 @@ describe("Table.play — Derba et surenchère", () => {
     expect(ev!.derbaTier).toBe(3);
     expect(ev!.cardsCaptured).toHaveLength(4);
     expect(ev!.reclaimedCards).toHaveLength(3);
+  });
+
+  it("la Missa voyage avec la surenchère : le surenchérisseur la reprend", () => {
+    const t = new Table();
+    t.play(player("A"), card(4, "oros")); // A pose sur table vide
+    const derba = t.play(player("B", "B"), card(4, "copas")); // Derba + table vidée = Missa
+    expect(derba!.isMissa).toBe(true);
+    const ev = t.play(player("C"), card(4, "espadas")); // surenchère
+    expect(ev!.derbaTier).toBe(2);
+    expect(ev!.isMissa).toBe(true); // la Missa est reprise avec le paquet
+  });
+
+  it("le paquet en attente de surenchère reste visible sur la table (pendingChainCards)", () => {
+    const t = new Table();
+    t.play(player("A"), card(4, "oros"));
+    t.play(player("B", "B"), card(4, "copas")); // Derba palier 1
+    expect(t.pendingChainCards.map((c) => c.id).sort()).toEqual(["copas_4", "oros_4"]);
+    t.play(player("C"), card(7)); // pose : chaîne rompue
+    expect(t.pendingChainCards).toHaveLength(0);
   });
 
   it("le paquet de la surenchère inclut la suite capturée par la Derba initiale", () => {

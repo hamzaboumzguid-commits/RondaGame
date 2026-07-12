@@ -56,8 +56,13 @@ class PublicPlayer {
 class PublicState {
   final String phase; // lobby | playing | reveal | roundEnd | gameOver
   final String roomCode;
+  final String mode; // '2v2' | '1v1'
+  /// 3 tfri9at (4-3-3) en 2v2, 5 tfri9at de 4 en 1v1.
+  final int dealsPerRound;
   final List<PublicPlayer> players;
   final List<GameCard> tablePile;
+  /// Paquet de Derba en attente de surenchère, encore affiché sur la table.
+  final List<GameCard> pendingDerba;
   final String leadPlayerId;
   final String currentTurnPlayerId;
   /// Échéance du tour courant (epoch ms), 0 hors phase de jeu. Timer 10 s.
@@ -70,8 +75,11 @@ class PublicState {
   const PublicState({
     required this.phase,
     required this.roomCode,
+    required this.mode,
+    required this.dealsPerRound,
     required this.players,
     required this.tablePile,
+    required this.pendingDerba,
     required this.leadPlayerId,
     required this.currentTurnPlayerId,
     required this.turnEndsAt,
@@ -84,10 +92,15 @@ class PublicState {
   factory PublicState.fromJson(Map<String, dynamic> json) => PublicState(
         phase: json['phase'] as String,
         roomCode: json['roomCode'] as String,
+        mode: (json['mode'] as String?) ?? '2v2',
+        dealsPerRound: (json['dealsPerRound'] as int?) ?? 3,
         players: (json['players'] as List)
             .map((p) => PublicPlayer.fromJson(p as Map<String, dynamic>))
             .toList(),
         tablePile: (json['tablePile'] as List)
+            .map((c) => GameCard.fromJson(c as Map<String, dynamic>))
+            .toList(),
+        pendingDerba: ((json['pendingDerba'] as List?) ?? const [])
             .map((c) => GameCard.fromJson(c as Map<String, dynamic>))
             .toList(),
         leadPlayerId: json['leadPlayerId'] as String,
@@ -176,6 +189,8 @@ class RoundEndEvent extends GameEvent {
   /// alimente les animations Roi (+5) / As (5 pts à l'adverse).
   final int? lastCaptureRank;
   final String? lastCaptureTeam;
+  /// Le Lead n'a pas fait la dernière prise -> animation MAJEBTICH 9A3TEK.
+  final bool leadMissedLastCapture;
 
   RoundEndEvent.fromJson(Map<String, dynamic> json)
       : butinPoints = (json['butinPoints'] as Map<String, dynamic>)
@@ -185,7 +200,24 @@ class RoundEndEvent extends GameEvent {
         cardCounts = (json['cardCounts'] as Map<String, dynamic>)
             .map((k, v) => MapEntry(k, v as int)),
         lastCaptureRank = (json['lastCapture'] as Map<String, dynamic>?)?['rank'] as int?,
-        lastCaptureTeam = (json['lastCapture'] as Map<String, dynamic>?)?['team'] as String?;
+        lastCaptureTeam = (json['lastCapture'] as Map<String, dynamic>?)?['team'] as String?,
+        leadMissedLastCapture = (json['leadMissedLastCapture'] as bool?) ?? false;
+}
+
+/// Événement local (émis par GameClient, pas par le serveur) : une nouvelle
+/// tfri9a vient d'être distribuée — déclenche l'animation de distribution.
+class NewDealEvent extends GameEvent {
+  final String dealerId;
+  final int cardsPerPlayer;
+  final int dealIndex;
+  final int dealsPerRound;
+
+  NewDealEvent({
+    required this.dealerId,
+    required this.cardsPerPlayer,
+    required this.dealIndex,
+    required this.dealsPerRound,
+  });
 }
 
 class GameOverEvent extends GameEvent {

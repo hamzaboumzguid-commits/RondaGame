@@ -78,7 +78,9 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
     final teamA = state.players.where((p) => p.team == 'A').toList();
     final teamB = state.players.where((p) => p.team == 'B').toList();
-    final isFull = state.players.length == 4;
+    final is1v1 = state.mode == '1v1';
+    final maxPlayers = is1v1 ? 2 : 4;
+    final isFull = state.players.length == maxPlayers;
 
     return PopScope(
       canPop: false,
@@ -106,7 +108,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           border: Border.all(color: RondaColors.gold.withValues(alpha: 0.5)),
                         ),
                         child: Text(
-                          '${state.players.length}/4 JOUEURS',
+                          '${is1v1 ? "1V1" : "2V2"} · ${state.players.length}/$maxPlayers JOUEURS',
                           style: const TextStyle(
                             color: RondaColors.cream,
                             fontSize: 15,
@@ -175,6 +177,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                             team: 'A',
                             players: teamA,
                             myId: client.playerId,
+                            slots: is1v1 ? 1 : 2,
                             onJoin: () => client.joinTeam('A'),
                           ),
                         ),
@@ -184,6 +187,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                             team: 'B',
                             players: teamB,
                             myId: client.playerId,
+                            slots: is1v1 ? 1 : 2,
                             onJoin: () => client.joinTeam('B'),
                           ),
                         ),
@@ -259,12 +263,14 @@ class _TeamColumn extends StatelessWidget {
   final String team;
   final List<PublicPlayer> players;
   final String? myId;
+  final int slots; // 2 en 2v2, 1 en 1v1
   final VoidCallback onJoin;
 
   const _TeamColumn({
     required this.team,
     required this.players,
     required this.myId,
+    required this.slots,
     required this.onJoin,
   });
 
@@ -273,7 +279,7 @@ class _TeamColumn extends StatelessWidget {
     final color = RondaColors.team(team);
     final light = RondaColors.teamLight(team);
     final iAmInTeam = players.any((p) => p.id == myId);
-    final isFull = players.length >= 2;
+    final isFull = players.length >= slots;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -310,7 +316,7 @@ class _TeamColumn extends StatelessWidget {
             _PlayerChip(player: player, isMe: player.id == myId),
             const SizedBox(height: 8),
           ],
-          for (int i = players.length; i < 2; i++) ...[
+          for (int i = players.length; i < slots; i++) ...[
             const _EmptySlot(),
             const SizedBox(height: 8),
           ],

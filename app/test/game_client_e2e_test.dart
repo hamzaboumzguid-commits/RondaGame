@@ -105,4 +105,53 @@ void main() {
       }
     }
   }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('mode 1v1 : 2 clients, 5 tfri9at de 4 cartes, partie jusqu\'à la victoire', () async {
+    if (!await serverUp()) {
+      markTestSkipped('Serveur non disponible sur $url — lancer `npm run dev` dans server/.');
+      return;
+    }
+
+    final host = GameClient();
+    final guest = GameClient();
+    final all = [host, guest];
+
+    try {
+      await host.createRoom('Hôte', mode: '1v1');
+      await waitUntil(() => host.roomCode != null, reason: 'code de room jamais reçu');
+      await guest.joinRoom(host.roomCode!, 'Rival');
+      await waitUntil(
+        () => all.every((c) => c.state?.players.length == 2),
+        reason: 'les 2 joueurs ne sont pas dans le lobby',
+      );
+      expect(host.state!.mode, '1v1');
+
+      host.startGame();
+      await waitUntil(
+        () => all.every((c) => c.state?.phase == 'playing' && c.hand.length == 4),
+        reason: 'la partie 1v1 n\'a pas démarré avec 4 cartes chacun',
+      );
+      expect(host.state!.dealsPerRound, 5);
+
+      var safety = 0;
+      while (host.state?.phase != 'gameOver' && safety < 3000) {
+        safety++;
+        final current = all.where((c) => c.isMyTurn).firstOrNull;
+        if (current == null || current.hand.isEmpty) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          continue;
+        }
+        current.playCard(current.hand.first.id);
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+
+      expect(host.state?.phase, 'gameOver',
+          reason: 'la partie 1v1 devrait se terminer (safety=$safety)');
+      expect(host.state!.scores[host.state!.winningTeam]!, greaterThanOrEqualTo(41));
+    } finally {
+      for (final c in all) {
+        c.dispose();
+      }
+    }
+  }, timeout: const Timeout(Duration(minutes: 2)));
 }

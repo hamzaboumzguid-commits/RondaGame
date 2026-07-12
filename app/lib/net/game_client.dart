@@ -90,9 +90,21 @@ class GameClient extends ChangeNotifier {
         state = PublicState.fromJson(msg['state'] as Map<String, dynamic>);
         notifyListeners();
       case 'yourHand':
-        hand = (msg['cards'] as List)
+        final newHand = (msg['cards'] as List)
             .map((c) => GameCard.fromJson(c as Map<String, dynamic>))
             .toList();
+        // Une main qui GROSSIT = nouvelle tfri9a distribuée -> animation de
+        // distribution. (Une main qui rétrécit n'est que la resync post-coup.)
+        final isNewDeal = newHand.length > hand.length;
+        hand = newHand;
+        if (isNewDeal && state != null) {
+          _events.add(NewDealEvent(
+            dealerId: state!.leadPlayerId,
+            cardsPerPlayer: newHand.length,
+            dealIndex: state!.dealIndex,
+            dealsPerRound: state!.dealsPerRound,
+          ));
+        }
         notifyListeners();
       case 'captureEvent':
         _events.add(CaptureEvent.fromJson(msg));
@@ -118,9 +130,9 @@ class GameClient extends ChangeNotifier {
     _channel?.sink.add(jsonEncode(msg));
   }
 
-  Future<void> createRoom(String nickname) async {
+  Future<void> createRoom(String nickname, {String mode = '2v2'}) async {
     await connect();
-    _send({'type': 'create', 'nickname': nickname});
+    _send({'type': 'create', 'nickname': nickname, 'mode': mode});
   }
 
   Future<void> joinRoom(String code, String nickname) async {

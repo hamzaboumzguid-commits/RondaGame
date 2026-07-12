@@ -10,7 +10,7 @@ import { Card, DerbaTier, TeamId } from "../game/types.js";
 // ---- Client -> Serveur ----
 
 export type ClientMessage =
-  | { type: "create"; nickname: string }
+  | { type: "create"; nickname: string; mode?: "2v2" | "1v1" }
   | { type: "join"; roomCode: string; nickname: string }
   | { type: "joinTeam"; team: TeamId }
   | { type: "start" }
@@ -34,8 +34,13 @@ export interface PublicPlayer {
 export interface PublicState {
   phase: "lobby" | "playing" | "reveal" | "roundEnd" | "gameOver";
   roomCode: string;
+  mode: "2v2" | "1v1";
+  /** 3 tfri9at (4-3-3) en 2v2, 5 tfri9at de 4 en 1v1. */
+  dealsPerRound: number;
   players: PublicPlayer[];
   tablePile: Card[];
+  /** Paquet de Derba en attente de surenchère, encore affiché sur la table. */
+  pendingDerba: Card[];
   leadPlayerId: string;
   currentTurnPlayerId: string;
   /** Échéance (epoch ms) du tour courant — timer de 10 s, 0 hors phase de jeu. */
@@ -80,6 +85,8 @@ export type ServerMessage =
       bonusPoints: Partial<Record<TeamId, number>>;
       cardCounts: Record<TeamId, number>;
       lastCapture: { rank: number; team: TeamId } | null;
+      /** Le Lead n'a pas fait la dernière prise -> animation MAJEBTICH 9A3TEK. */
+      leadMissedLastCapture: boolean;
     }
   | { type: "gameOver"; winningTeam: TeamId }
   | { type: "gameAbandoned"; reason: string }

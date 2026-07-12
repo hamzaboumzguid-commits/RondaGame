@@ -87,21 +87,20 @@ describe("GameRoom — lobby", () => {
   });
 });
 
-describe("GameRoom — partie complète", () => {
-  function playUntilGameOver(room: GameRoom, players: FakePlayer[], maxTurns = 5000): void {
-    let turns = 0;
-    while (room.phase !== "gameOver" && turns < maxTurns) {
-      const state = room.publicState();
-      const current = players.find((p) => p.id === state.currentTurnPlayerId);
-      if (!current || current.hand.length === 0) break;
+function playUntilGameOver(room: GameRoom, players: FakePlayer[], maxTurns = 5000): void {
+  let turns = 0;
+  while (room.phase !== "gameOver" && turns < maxTurns) {
+    const state = room.publicState();
+    const current = players.find((p) => p.id === state.currentTurnPlayerId);
+    if (!current || current.hand.length === 0) break;
 
-      const card = current.hand[0];
-      // retire la carte localement (le serveur renvoie la main via yourHand seulement à la donne)
-      current.hand = current.hand.slice(1);
-      room.playCard(current.id, card.id);
-      turns++;
-    }
+    // Le serveur resynchronise la main via yourHand après chaque coup.
+    room.playCard(current.id, current.hand[0].id);
+    turns++;
   }
+}
+
+describe("GameRoom — partie complète", () => {
 
   it("une partie se déroule jusqu'à la victoire d'une équipe (score >= 41)", () => {
     const { room, players } = setupFullRoom();
@@ -203,6 +202,79 @@ describe("GameRoom — partie complète", () => {
   it("statistique sur 30 parties : jamais de crash, toujours un gagnant", () => {
     for (let i = 0; i < 30; i++) {
       const { room, players } = setupFullRoom();
+      room.start("p0");
+      playUntilGameOver(room, players);
+      expect(room.phase).toBe("gameOver");
+    }
+  });
+
+  it("après chaque coup, le joueur reçoit sa main resynchronisée (pas de carte fantôme)", () => {
+    const { room, players } = setupFullRoom();
+    room.start("p0");
+    const state = room.publicState();
+    const current = players.find((p) => p.id === state.currentTurnPlayerId)!;
+    const played = current.hand[0];
+
+    room.playCard(current.id, played.id);
+
+    // Le serveur a renvoyé yourHand : la carte jouée n'y figure plus.
+    const hands = current.messagesOfType("yourHand");
+    expect(hands.length).toBeGreaterThanOrEqual(2);
+    const lastHand = hands[hands.length - 1].cards;
+    expect(lastHand.some((c) => c.id === played.id)).toBe(false);
+    expect(lastHand).toHaveLength(3);
+  });
+});
+
+describe("GameRoom — mode 1v1", () => {
+  function setup1v1(): { room: GameRoom; players: FakePlayer[] } {
+    const room = new GameRoom("TEST1V1", "1v1");
+    const players = ["p0", "p1"].map((id) => new FakePlayer(id));
+    for (const p of players) {
+      const res = room.join(p.id, `Joueur-${p.id}`, p);
+      expect(res.ok).toBe(true);
+    }
+    return { room, players };
+  }
+
+  it("refuse un 3e joueur et démarre à 2", () => {
+    const { room } = setup1v1();
+    const extra = new FakePlayer("p2");
+    expect(room.join(extra.id, "Intrus", extra).ok).toBe(false);
+
+    room.start("p0");
+    expect(room.phase).toBe("playing");
+    const state = room.publicState();
+    expect(state.mode).toBe("1v1");
+    expect(state.dealsPerRound).toBe(5);
+  });
+
+  it("distribue 4 cartes chacun sur 5 tfri9at (40 cartes par manche)", () => {
+    const { room, players } = setup1v1();
+    room.start("p0");
+
+    for (const p of players) {
+      expect(p.hand).toHaveLength(4);
+    }
+
+    playUntilGameOver(room, players);
+    expect(room.phase).toBe("gameOver");
+    for (const p of players) {
+      for (const end of p.messagesOfType("roundEnd")) {
+        expect(end.cardCounts.A + end.cardCounts.B).toBe(40);
+      }
+      // 5 tfri9at par manche : au moins 5 révélations avant la première fin de manche.
+      const reveals = p.messagesOfType("subRoundReveal");
+      const roundEnds = p.messagesOfType("roundEnd");
+      if (roundEnds.length > 0) {
+        expect(reveals.length).toBeGreaterThanOrEqual(5);
+      }
+    }
+  });
+
+  it("statistique sur 20 parties 1v1 : jamais de crash, toujours un gagnant", () => {
+    for (let i = 0; i < 20; i++) {
+      const { room, players } = setup1v1();
       room.start("p0");
       playUntilGameOver(room, players);
       expect(room.phase).toBe("gameOver");

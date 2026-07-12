@@ -133,7 +133,14 @@ class _GameScreenState extends State<GameScreen> {
         ? null
         : client.hand.where((c) => c.id == _selectedCardId).firstOrNull;
     final wouldCapture = selectedCard != null &&
-        state.tablePile.any((c) => c.rank == selectedCard.rank);
+        (state.tablePile.any((c) => c.rank == selectedCard.rank) ||
+            state.pendingDerba.any((c) => c.rank == selectedCard.rank));
+
+    // En 1v1, l'adversaire unique est affiché en face ; pas de côtés.
+    final is1v1 = state.mode == '1v1';
+    final facingPlayer = is1v1
+        ? state.players.where((p) => p.id != client.playerId).firstOrNull
+        : seatAt(2);
 
     return PopScope(
       canPop: false,
@@ -157,14 +164,21 @@ class _GameScreenState extends State<GameScreen> {
                         if (quit == true && mounted) _exitToHome();
                       }),
                       const SizedBox(height: 2),
-                      _SeatBadge(player: seatAt(2), state: state),
+                      _SeatBadge(player: facingPlayer, state: state),
                       Expanded(
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            _SeatBadge(player: seatAt(3), state: state, compact: true),
-                            Expanded(child: _FeltTable(cards: state.tablePile)),
-                            _SeatBadge(player: seatAt(1), state: state, compact: true),
+                            _SeatBadge(
+                                player: is1v1 ? null : seatAt(3), state: state, compact: true),
+                            Expanded(
+                              child: _FeltTable(
+                                cards: state.tablePile,
+                                pendingDerba: state.pendingDerba,
+                              ),
+                            ),
+                            _SeatBadge(
+                                player: is1v1 ? null : seatAt(1), state: state, compact: true),
                           ],
                         ),
                       ),
@@ -239,6 +253,15 @@ class _GameScreenState extends State<GameScreen> {
           onDone: _onEventDone,
         ),
       RoundEndEvent() => RoundEndOverlay(event: event, onDone: _onEventDone),
+      NewDealEvent() => DealOverlay(
+          key: ValueKey('deal-${event.dealIndex}-${event.cardsPerPlayer}'),
+          dealerName: nicknameOf(event.dealerId),
+          cardsPerPlayer: event.cardsPerPlayer,
+          dealIndex: event.dealIndex,
+          dealsPerRound: event.dealsPerRound,
+          playerCount: state.players.length,
+          onDone: _onEventDone,
+        ),
       GameOverEvent() || GameAbandonedEvent() => _InstantDone(onDone: _onEventDone),
       _ => _InstantDone(onDone: _onEventDone),
     };
@@ -317,7 +340,7 @@ class _ScoreBar extends StatelessWidget {
                   child: Column(
                     children: [
                       Text(
-                        'MANCHE ${state.roundNumber}',
+                        'TER7 ${state.roundNumber}',
                         style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
@@ -326,7 +349,7 @@ class _ScoreBar extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'Donne ${state.dealIndex + 1}/3',
+                        'TFRI9A ${state.dealIndex + 1}/${state.dealsPerRound}',
                         style: const TextStyle(fontSize: 10, color: RondaColors.creamDark),
                       ),
                     ],
@@ -761,15 +784,17 @@ class _PulsingRingState extends State<_PulsingRing> with SingleTickerProviderSta
   }
 }
 
-/// Tapis central en feutre : les cartes y sont éparpillées avec de légères
-/// rotations aléatoires (stables par carte) comme sur une vraie table.
+/// Tapis central en feutre : cartes éparpillées avec rotations stables,
+/// et paquet de Derba en attente de surenchère mis en scène au centre.
 class _FeltTable extends StatelessWidget {
   final List<GameCard> cards;
+  final List<GameCard> pendingDerba;
 
-  const _FeltTable({required this.cards});
+  const _FeltTable({required this.cards, required this.pendingDerba});
 
   @override
   Widget build(BuildContext context) {
+    final isEmpty = cards.isEmpty && pendingDerba.isEmpty;
     // Le fond illustré fournit déjà le tapis zellige encadré d'or :
     // on ne pose qu'un léger voile pour détacher les cartes.
     return Container(
@@ -778,7 +803,7 @@ class _FeltTable extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(26),
       ),
-      child: cards.isEmpty
+      child: isEmpty
           ? Center(
               child: Opacity(
                 opacity: 0.35,
@@ -798,16 +823,111 @@ class _FeltTable extends StatelessWidget {
           : Center(
               child: Padding(
                 padding: const EdgeInsets.all(10),
-                child: Wrap(
-                  spacing: 4,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (final card in cards) _TossedCard(key: ValueKey(card.id), card: card),
+                    if (pendingDerba.isNotEmpty) ...[
+                      _PendingDerbaStack(cards: pendingDerba),
+                      const SizedBox(height: 10),
+                    ],
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        for (final card in cards) _TossedCard(key: ValueKey(card.id), card: card),
+                      ],
+                    ),
                   ],
                 ),
               ),
             ),
+    );
+  }
+}
+
+/// Paquet de Derba posé sur la table en attente de surenchère : cartes
+/// empilées en éventail serré, halo doré pulsant — tout le monde voit
+/// que ça peut encore se faire reprendre.
+class _PendingDerbaStack extends StatefulWidget {
+  final List<GameCard> cards;
+
+  const _PendingDerbaStack({required this.cards});
+
+  @override
+  State<_PendingDerbaStack> createState() => _PendingDerbaStackState();
+}
+
+class _PendingDerbaStackState extends State<_PendingDerbaStack>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, child) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: RondaColors.goldLight.withValues(alpha: 0.35 + 0.35 * _pulse.value),
+              blurRadius: 16 + 10 * _pulse.value,
+            ),
+          ],
+        ),
+        child: child,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 84,
+            width: 60.0 + 22.0 * (widget.cards.length - 1),
+            child: Stack(
+              children: [
+                for (final (i, card) in widget.cards.indexed)
+                  Positioned(
+                    left: i * 22.0,
+                    child: PlayingCardWidget(
+                      card: card,
+                      width: 54,
+                      angle: (i - (widget.cards.length - 1) / 2) * 0.06,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 3),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: RondaColors.gold.withValues(alpha: 0.7)),
+            ),
+            child: const Text(
+              'DERBA — SURENCHÈRE ?',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
+                color: RondaColors.goldLight,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -902,33 +1022,68 @@ class _MyCountdownBarState extends State<_MyCountdownBar>
         .clamp(0, turnTimeoutMs)
         .toDouble();
     final fraction = remaining / turnTimeoutMs;
+    final seconds = (remaining / 1000).ceil();
     final urgent = fraction < 0.3;
     final color = urgent ? const Color(0xFFE05A2B) : RondaColors.goldLight;
 
-    return Container(
-      width: 200,
-      height: 10,
-      margin: const EdgeInsets.symmetric(vertical: 2),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFF3A2417), width: 1.5),
-      ),
-      child: FractionallySizedBox(
-        alignment: Alignment.centerLeft,
-        widthFactor: fraction,
-        child: Container(
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 190,
+          height: 12,
+          margin: const EdgeInsets.symmetric(vertical: 2),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [color, color.withValues(alpha: 0.75)],
+            color: Colors.black.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: const Color(0xFF3A2417), width: 1.5),
+          ),
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: fraction,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [color, color.withValues(alpha: 0.75)],
+                ),
+                borderRadius: BorderRadius.circular(6),
+                boxShadow: urgent
+                    ? [BoxShadow(color: color.withValues(alpha: 0.7), blurRadius: 8)]
+                    : null,
+              ),
             ),
-            borderRadius: BorderRadius.circular(5),
-            boxShadow: urgent
-                ? [BoxShadow(color: color.withValues(alpha: 0.7), blurRadius: 8)]
-                : null,
           ),
         ),
-      ),
+        const SizedBox(width: 8),
+        // Gros compteur : le joueur courant sait toujours où il en est.
+        AnimatedScale(
+          duration: const Duration(milliseconds: 120),
+          scale: urgent ? 1.2 : 1.0,
+          child: Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.55),
+              border: Border.all(color: color, width: 2.5),
+              boxShadow: urgent
+                  ? [BoxShadow(color: color.withValues(alpha: 0.8), blurRadius: 10)]
+                  : null,
+            ),
+            child: Center(
+              child: Text(
+                '$seconds',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  color: color,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
