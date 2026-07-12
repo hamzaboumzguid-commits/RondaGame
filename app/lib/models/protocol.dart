@@ -28,7 +28,8 @@ class PublicPlayer {
   final int seat;
   final String team;
   final int handCount;
-  final bool hasAnnouncement;
+  /// '' | 'ronda' | 'tringa' — le type est révélé, jamais la valeur (GDD 2.5).
+  final String announcementKind;
   final bool isHost;
 
   const PublicPlayer({
@@ -37,7 +38,7 @@ class PublicPlayer {
     required this.seat,
     required this.team,
     required this.handCount,
-    required this.hasAnnouncement,
+    required this.announcementKind,
     required this.isHost,
   });
 
@@ -47,7 +48,7 @@ class PublicPlayer {
         seat: json['seat'] as int,
         team: json['team'] as String,
         handCount: json['handCount'] as int,
-        hasAnnouncement: json['hasAnnouncement'] as bool,
+        announcementKind: (json['announcementKind'] as String?) ?? '',
         isHost: json['isHost'] as bool,
       );
 }
@@ -59,6 +60,8 @@ class PublicState {
   final List<GameCard> tablePile;
   final String leadPlayerId;
   final String currentTurnPlayerId;
+  /// Échéance du tour courant (epoch ms), 0 hors phase de jeu. Timer 10 s.
+  final int turnEndsAt;
   final Map<String, int> scores; // {A: x, B: y}
   final String winningTeam;
   final int roundNumber;
@@ -71,6 +74,7 @@ class PublicState {
     required this.tablePile,
     required this.leadPlayerId,
     required this.currentTurnPlayerId,
+    required this.turnEndsAt,
     required this.scores,
     required this.winningTeam,
     required this.roundNumber,
@@ -88,6 +92,7 @@ class PublicState {
             .toList(),
         leadPlayerId: json['leadPlayerId'] as String,
         currentTurnPlayerId: json['currentTurnPlayerId'] as String,
+        turnEndsAt: (json['turnEndsAt'] as num?)?.toInt() ?? 0,
         scores: (json['scores'] as Map<String, dynamic>)
             .map((k, v) => MapEntry(k, v as int)),
         winningTeam: json['winningTeam'] as String,
@@ -167,6 +172,10 @@ class RoundEndEvent extends GameEvent {
   final Map<String, int> butinPoints;
   final Map<String, int> bonusPoints;
   final Map<String, int> cardCounts;
+  /// Rang et équipe de la dernière capture de la manche (null si aucune) :
+  /// alimente les animations Roi (+5) / As (5 pts à l'adverse).
+  final int? lastCaptureRank;
+  final String? lastCaptureTeam;
 
   RoundEndEvent.fromJson(Map<String, dynamic> json)
       : butinPoints = (json['butinPoints'] as Map<String, dynamic>)
@@ -174,7 +183,9 @@ class RoundEndEvent extends GameEvent {
         bonusPoints = (json['bonusPoints'] as Map<String, dynamic>)
             .map((k, v) => MapEntry(k, v as int)),
         cardCounts = (json['cardCounts'] as Map<String, dynamic>)
-            .map((k, v) => MapEntry(k, v as int));
+            .map((k, v) => MapEntry(k, v as int)),
+        lastCaptureRank = (json['lastCapture'] as Map<String, dynamic>?)?['rank'] as int?,
+        lastCaptureTeam = (json['lastCapture'] as Map<String, dynamic>?)?['team'] as String?;
 }
 
 class GameOverEvent extends GameEvent {

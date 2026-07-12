@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
 import '../models/protocol.dart';
@@ -11,6 +12,9 @@ import '../theme.dart';
 import '../widgets/event_overlays.dart';
 import '../widgets/playing_card.dart';
 import 'victory_screen.dart';
+
+/// Durée du tour côté serveur (GDD 3.4) — utilisée pour calibrer les jauges.
+const turnTimeoutMs = 10000;
 
 /// Table de jeu : sièges autour du tapis, pile centrale éparpillée façon vraie
 /// table, main en éventail en bas. Les événements serveur (Derba, Missa,
@@ -166,6 +170,17 @@ class _GameScreenState extends State<GameScreen> {
                       ),
                       _TurnIndicator(state: state, myId: client.playerId),
                       const SizedBox(height: 4),
+                      if (client.isMyTurn && state.turnEndsAt > 0)
+                        _MyCountdownBar(endsAt: state.turnEndsAt),
+                      if ((client.me?.announcementKind ?? '').isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: AnnouncementPill(
+                            kind: client.me!.announcementKind,
+                            fontSize: 13,
+                          ),
+                        ),
+                      const SizedBox(height: 2),
                       _PlayButton(
                         visible: selectedCard != null && client.isMyTurn,
                         capture: wouldCapture,
@@ -438,9 +453,12 @@ class _SeatBadge extends StatelessWidget {
 
     final avatar = _PulsingRing(
       active: isTheirTurn,
-      child: Container(
-        width: 44,
-        height: 44,
+      child: _CountdownRing(
+        active: isTheirTurn && state.turnEndsAt > 0,
+        endsAt: state.turnEndsAt,
+        child: Container(
+          width: 44,
+          height: 44,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: LinearGradient(
@@ -465,6 +483,7 @@ class _SeatBadge extends StatelessWidget {
               color: RondaColors.cream,
             ),
           ),
+        ),
         ),
       ),
     );
@@ -504,12 +523,6 @@ class _SeatBadge extends StatelessWidget {
                 right: -3,
                 child: Icon(Icons.workspace_premium, size: 16, color: RondaColors.goldLight),
               ),
-            if (p.hasAnnouncement)
-              Positioned(
-                bottom: -3,
-                right: -5,
-                child: _AnnouncementBadge(),
-              ),
             Positioned(
               bottom: -3,
               left: -5,
@@ -533,7 +546,7 @@ class _SeatBadge extends StatelessWidget {
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 76),
           child: Text(
-            p.nickname,
+            p.nickname.toUpperCase(),
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -543,6 +556,10 @@ class _SeatBadge extends StatelessWidget {
             ),
           ),
         ),
+        if (p.announcementKind.isNotEmpty) ...[
+          const SizedBox(height: 3),
+          AnnouncementPill(kind: p.announcementKind),
+        ],
       ],
     );
 
@@ -553,17 +570,23 @@ class _SeatBadge extends StatelessWidget {
   }
 }
 
-/// Badge « ce joueur a annoncé quelque chose » — sans révéler quoi (GDD 2.5).
-class _AnnouncementBadge extends StatefulWidget {
+/// Pastille d'annonce bien visible : révèle le TYPE (RONDA/TRINGA) mais
+/// jamais la valeur (GDD 2.5, décision 2026-07-12). Pulse pour attirer l'œil.
+class AnnouncementPill extends StatefulWidget {
+  final String kind; // 'ronda' | 'tringa'
+  final double fontSize;
+
+  const AnnouncementPill({super.key, required this.kind, this.fontSize = 11});
+
   @override
-  State<_AnnouncementBadge> createState() => _AnnouncementBadgeState();
+  State<AnnouncementPill> createState() => _AnnouncementPillState();
 }
 
-class _AnnouncementBadgeState extends State<_AnnouncementBadge>
+class _AnnouncementPillState extends State<AnnouncementPill>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 900),
+    duration: const Duration(milliseconds: 850),
   )..repeat(reverse: true);
 
   @override
@@ -574,28 +597,105 @@ class _AnnouncementBadgeState extends State<_AnnouncementBadge>
 
   @override
   Widget build(BuildContext context) {
+    final isTringa = widget.kind == 'tringa';
+    final colors = isTringa
+        ? const [Color(0xFFB65CE8), Color(0xFF7B2FA8)] // violet royal : la Tringa est rare
+        : const [Color(0xFFF2C94C), Color(0xFFE0902B)];
     return ScaleTransition(
-      scale: Tween(begin: 0.92, end: 1.12).animate(
+      scale: Tween(begin: 0.95, end: 1.08).animate(
         CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
       ),
       child: Container(
-        width: 17,
-        height: 17,
+        padding: EdgeInsets.symmetric(horizontal: widget.fontSize * 0.8, vertical: widget.fontSize * 0.25),
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: const LinearGradient(colors: [RondaColors.goldLight, RondaColors.gold]),
-          border: Border.all(color: RondaColors.wood, width: 1),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: colors,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFF3A2417), width: 1.5),
           boxShadow: [
-            BoxShadow(color: RondaColors.gold.withValues(alpha: 0.6), blurRadius: 6),
+            BoxShadow(color: colors.first.withValues(alpha: 0.7), blurRadius: 10),
           ],
         ),
-        child: const Center(
-          child: Text(
-            '!',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: RondaColors.wood, height: 1),
+        child: Text(
+          isTringa ? 'TRINGA !' : 'RONDA !',
+          style: TextStyle(
+            fontSize: widget.fontSize,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.8,
+            color: isTringa ? Colors.white : const Color(0xFF3A2417),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Anneau de compte à rebours du tour (10 s) : se vide autour de l'avatar,
+/// passe à l'orange puis au rouge quand le temps file.
+class _CountdownRing extends StatefulWidget {
+  final bool active;
+  final int endsAt; // epoch ms
+  final Widget child;
+
+  const _CountdownRing({required this.active, required this.endsAt, required this.child});
+
+  @override
+  State<_CountdownRing> createState() => _CountdownRingState();
+}
+
+class _CountdownRingState extends State<_CountdownRing>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker = createTicker((_) => setState(() {}));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _ticker.start();
+  }
+
+  @override
+  void didUpdateWidget(_CountdownRing oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !_ticker.isActive) _ticker.start();
+    if (!widget.active && _ticker.isActive) _ticker.stop();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.active) return widget.child;
+    final remaining = (widget.endsAt - DateTime.now().millisecondsSinceEpoch)
+        .clamp(0, turnTimeoutMs)
+        .toDouble();
+    final fraction = remaining / turnTimeoutMs;
+    final color = fraction > 0.5
+        ? RondaColors.goldLight
+        : Color.lerp(const Color(0xFFE05A2B), RondaColors.goldLight, fraction * 2)!;
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        SizedBox(
+          width: 54,
+          height: 54,
+          child: CircularProgressIndicator(
+            value: fraction,
+            strokeWidth: 4,
+            strokeCap: StrokeCap.round,
+            backgroundColor: Colors.black.withValues(alpha: 0.35),
+            valueColor: AlwaysStoppedAnimation(color),
+          ),
+        ),
+        widget.child,
+      ],
     );
   }
 }
@@ -688,7 +788,7 @@ class _FeltTable extends StatelessWidget {
                     Icon(Icons.style_outlined, size: 34, color: RondaColors.goldLight),
                     const SizedBox(height: 4),
                     const Text(
-                      'Table vide',
+                      'TABLE VIDE',
                       style: TextStyle(fontSize: 12, color: RondaColors.creamDark),
                     ),
                   ],
@@ -760,12 +860,72 @@ class _TurnIndicator extends StatelessWidget {
           ),
         ),
         child: Text(
-          isMyTurn ? '✦ À TOI DE JOUER ✦' : 'Au tour de ${current?.nickname ?? "..."}',
+          isMyTurn
+              ? '✦ À TOI DE JOUER ✦'
+              : 'AU TOUR DE ${(current?.nickname ?? "...").toUpperCase()}',
           style: TextStyle(
             fontSize: isMyTurn ? 14 : 13,
             fontWeight: isMyTurn ? FontWeight.w900 : FontWeight.w500,
             letterSpacing: isMyTurn ? 1.2 : 0,
             color: isMyTurn ? RondaColors.goldLight : RondaColors.creamDark,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Jauge de temps du joueur local : barre qui se vide sous l'indicateur de
+/// tour, vire au rouge sur les 3 dernières secondes.
+class _MyCountdownBar extends StatefulWidget {
+  final int endsAt;
+
+  const _MyCountdownBar({required this.endsAt});
+
+  @override
+  State<_MyCountdownBar> createState() => _MyCountdownBarState();
+}
+
+class _MyCountdownBarState extends State<_MyCountdownBar>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker = createTicker((_) => setState(() {}))..start();
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = (widget.endsAt - DateTime.now().millisecondsSinceEpoch)
+        .clamp(0, turnTimeoutMs)
+        .toDouble();
+    final fraction = remaining / turnTimeoutMs;
+    final urgent = fraction < 0.3;
+    final color = urgent ? const Color(0xFFE05A2B) : RondaColors.goldLight;
+
+    return Container(
+      width: 200,
+      height: 10,
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF3A2417), width: 1.5),
+      ),
+      child: FractionallySizedBox(
+        alignment: Alignment.centerLeft,
+        widthFactor: fraction,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [color, color.withValues(alpha: 0.75)],
+            ),
+            borderRadius: BorderRadius.circular(5),
+            boxShadow: urgent
+                ? [BoxShadow(color: color.withValues(alpha: 0.7), blurRadius: 8)]
+                : null,
           ),
         ),
       ),

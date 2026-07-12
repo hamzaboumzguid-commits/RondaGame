@@ -106,7 +106,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           border: Border.all(color: RondaColors.gold.withValues(alpha: 0.5)),
                         ),
                         child: Text(
-                          '${state.players.length}/4 joueurs',
+                          '${state.players.length}/4 JOUEURS',
                           style: const TextStyle(
                             color: RondaColors.cream,
                             fontSize: 15,
@@ -124,7 +124,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                       Clipboard.setData(ClipboardData(text: state.roomCode));
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Code copié !'),
+                          content: Text('CODE COPIÉ !'),
                           behavior: SnackBarBehavior.floating,
                           duration: Duration(seconds: 1),
                         ),
@@ -206,7 +206,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: const Text(
-                        "En attente du lancement par l'hôte...",
+                        "EN ATTENTE DE L'HÔTE...",
                         style: TextStyle(color: RondaColors.creamDark, fontSize: 15),
                       ),
                     ),
@@ -372,7 +372,7 @@ class _PlayerChip extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              isMe ? '${player.nickname} (toi)' : player.nickname,
+              isMe ? '${player.nickname.toUpperCase()} (TOI)' : player.nickname.toUpperCase(),
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontWeight: isMe ? FontWeight.w900 : FontWeight.w600,
@@ -406,7 +406,7 @@ class _EmptySlot extends StatelessWidget {
               size: 18, color: Colors.white.withValues(alpha: 0.55)),
           const SizedBox(width: 8),
           Text(
-            'Place libre',
+            'PLACE LIBRE',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.65),
               fontStyle: FontStyle.italic,

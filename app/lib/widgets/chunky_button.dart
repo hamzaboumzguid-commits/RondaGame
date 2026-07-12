@@ -102,6 +102,8 @@ class _ChunkyButtonState extends State<ChunkyButton> {
                   colors: [_light, widget.color],
                 ),
                 borderRadius: BorderRadius.circular(widget.height * 0.30),
+                // Liseré intérieur clair, comme une planche chanfreinée.
+                border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1.5),
               ),
               child: Stack(
                 children: [
@@ -118,6 +120,34 @@ class _ChunkyButtonState extends State<ChunkyButton> {
                       ),
                     ),
                   ),
+                  // Rivets dorés aux extrémités, façon panneau de bois cloué.
+                  for (final alignment in [Alignment.centerLeft, Alignment.centerRight])
+                    Align(
+                      alignment: alignment,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 11),
+                        child: Container(
+                          width: widget.height * 0.14,
+                          height: widget.height * 0.14,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFFFFE9A8), Color(0xFFB98A2B)],
+                            ),
+                            border: Border.all(color: _outline, width: 1.2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 2,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   Center(
                     child: Row(
                       mainAxisSize: MainAxisSize.min,

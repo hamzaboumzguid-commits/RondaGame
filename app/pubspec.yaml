@@ -24,3 +24,7 @@ flutter:
   assets:
     - assets/cards/
     - assets/ui/
+  fonts:
+    - family: Lilita
+      fonts:
+        - asset: assets/fonts/LilitaOne-Regular.ttf

@@ -146,9 +146,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(height: 8),
                           _ParchmentField(
                             controller: _nicknameController,
-                            hint: 'Ex. Hamza',
+                            hint: 'EX. HAMZA',
                             maxLength: 20,
                             fontSize: 18,
+                            icon: Icons.person_rounded,
                           ),
                         ],
                       ),
@@ -182,6 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             maxLength: 5,
                             fontSize: 24,
                             letterSpacing: 8,
+                            icon: Icons.vpn_key_rounded,
                             inputFormatters: [
                               FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
                               UpperCaseTextFormatter(),
@@ -215,13 +217,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// Champ de saisie « parchemin » : fond crème creusé, contour brun.
+/// Champ de saisie « parchemin » : creusé dans la planche (double contour,
+/// ombre interne), icône thématique à gauche, façon inventaire de jeu.
 class _ParchmentField extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
   final int maxLength;
   final double fontSize;
   final double letterSpacing;
+  final IconData? icon;
   final List<TextInputFormatter>? inputFormatters;
 
   const _ParchmentField({
@@ -230,49 +234,73 @@ class _ParchmentField extends StatelessWidget {
     required this.maxLength,
     required this.fontSize,
     this.letterSpacing = 0.5,
+    this.icon,
     this.inputFormatters,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      // Contour extérieur sombre = bord du renfoncement.
+      padding: const EdgeInsets.all(2.5),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF6E0),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF8A6238), width: 2),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x33000000),
-            blurRadius: 3,
-            offset: Offset(0, 2),
-            blurStyle: BlurStyle.inner,
-          ),
-        ],
+        color: const Color(0xFF3A2417),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: TextField(
-        controller: controller,
-        maxLength: maxLength,
-        textAlign: TextAlign.center,
-        textCapitalization: TextCapitalization.characters,
-        inputFormatters: inputFormatters,
-        style: TextStyle(
-          fontSize: fontSize,
-          fontWeight: FontWeight.w800,
-          letterSpacing: letterSpacing,
-          color: const Color(0xFF4A2E15),
-        ),
-        decoration: InputDecoration(
-          counterText: '',
-          hintText: hint,
-          hintStyle: TextStyle(
-            color: const Color(0xFF4A2E15).withValues(alpha: 0.35),
-            fontWeight: FontWeight.w600,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFEFE0BC), Color(0xFFFFF8E6)],
           ),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          filled: false,
-          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+          borderRadius: BorderRadius.circular(13),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x40000000),
+              blurRadius: 5,
+              offset: Offset(0, 3),
+              blurStyle: BlurStyle.inner,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            if (icon != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 14),
+                child: Icon(icon, color: const Color(0xFF8A6238), size: fontSize + 4),
+              ),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                maxLength: maxLength,
+                textAlign: TextAlign.center,
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: inputFormatters,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: letterSpacing,
+                  color: const Color(0xFF4A2E15),
+                ),
+                decoration: InputDecoration(
+                  counterText: '',
+                  hintText: hint,
+                  hintStyle: TextStyle(
+                    color: const Color(0xFF4A2E15).withValues(alpha: 0.3),
+                    fontWeight: FontWeight.w600,
+                  ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                ),
+              ),
+            ),
+            if (icon != null) SizedBox(width: fontSize + 18), // équilibre le centrage
+          ],
         ),
       ),
     );

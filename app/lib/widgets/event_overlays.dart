@@ -5,17 +5,72 @@ import 'package:flutter/material.dart';
 import '../models/protocol.dart';
 import '../theme.dart';
 
-/// Durées des animations bloquantes (GDD 3.4 : 1-2s max).
+/// Durées des animations bloquantes (GDD 3.5 : 1-2s max).
 const kDerbaTier1Duration = Duration(milliseconds: 1100);
 const kDerbaTier2Duration = Duration(milliseconds: 1500);
 const kDerbaTier3Duration = Duration(milliseconds: 2000);
-const kMissaDuration = Duration(milliseconds: 1000);
-const kRevealDuration = Duration(milliseconds: 2600);
-const kRoundEndDuration = Duration(milliseconds: 2600);
+const kMissaDuration = Duration(milliseconds: 1100);
+const kRevealDuration = Duration(milliseconds: 3000);
+const kRoundEndDuration = Duration(milliseconds: 3000);
+const kLastCaptureDuration = Duration(milliseconds: 1700);
 
-/// Escalade visuelle de la Derba (GDD 3.4) :
-/// palier 1 = impact doré + étincelles, palier 2 = onde de choc + confettis,
-/// palier 3 = plein écran : voile, double onde, pluie de confettis, zoom punchy.
+// ---------------------------------------------------------------------------
+// Langage visuel commun : tous les événements utilisent le même vocabulaire
+// (texte arcade contour+dégradé, flare, onde de choc, confettis physiques) —
+// seule l'INTENSITÉ change selon l'importance de l'événement.
+// ---------------------------------------------------------------------------
+
+/// Impact générique : flare + onde + confettis + texte, intensité 0..1.
+class _ImpactLayer extends StatelessWidget {
+  final double t;
+  final double intensity; // 0.25 = Missa, 0.4 = Derba 1, 0.7 = Derba 2, 1.0 = Derba 3
+  final Color accent;
+
+  const _ImpactLayer({
+    required this.t,
+    required this.intensity,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _ShockwavePainter(
+              progress: t,
+              color: accent,
+              doubleWave: intensity >= 0.9,
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _FlarePainter(
+              progress: t,
+              color: RondaColors.goldLight,
+              maxScale: 0.3 + 0.6 * intensity,
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _ConfettiBurstPainter(
+              progress: t,
+              count: (12 + 60 * intensity).round(),
+              spread: 0.3 + 0.65 * intensity,
+              seed: 7,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Escalade visuelle de la Derba (GDD 3.5) : trois paliers du même langage,
+/// de plus en plus intenses.
 class DerbaOverlay extends StatefulWidget {
   final int tier; // 1, 2 ou 3
   final int points;
@@ -67,222 +122,62 @@ class _DerbaOverlayState extends State<DerbaOverlay> with SingleTickerProviderSt
       animation: _controller,
       builder: (context, _) {
         final t = _controller.value;
-        return switch (widget.tier) {
-          1 => _buildTier1(t),
-          2 => _buildTier2(t),
-          _ => _buildTier3(t),
-        };
-      },
-    );
-  }
+        final tier = widget.tier;
+        final intensity = tier == 1 ? 0.4 : (tier == 2 ? 0.7 : 1.0);
+        final scale = Curves.elasticOut.transform(math.min(1, t * 2.0)) * (tier == 3 ? 1.05 + t * 0.1 : 1.0);
+        final shakeAmp = tier == 1 ? 0.0 : (tier == 2 ? 7.0 : 10.0);
+        final shake = math.sin(t * math.pi * 18) * shakeAmp * (1 - t);
+        final fade = t < 0.8 ? 1.0 : 1 - (t - 0.8) / 0.2;
+        final veil = tier == 3
+            ? (t < 0.12 ? t / 0.12 : (t < 0.85 ? 1.0 : 1 - (t - 0.85) / 0.15))
+            : 0.0;
 
-  /// Palier 1 : le mot claque avec un flare doré et quelques étincelles.
-  Widget _buildTier1(double t) {
-    final scale = Curves.elasticOut.transform(math.min(1, t * 2.2));
-    final opacity = t < 0.75 ? 1.0 : 1 - (t - 0.75) / 0.25;
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _FlarePainter(progress: t, color: RondaColors.goldLight, maxScale: 0.35),
-          ),
-        ),
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _ConfettiBurstPainter(progress: t, count: 16, spread: 0.35, seed: 3),
-          ),
-        ),
-        Center(
-          child: Opacity(
-            opacity: opacity.clamp(0, 1),
-            child: Transform.scale(
-              scale: scale,
-              child: _JuicyText(
-                label: 'DERBA !',
-                sub: '+${widget.points} · ${widget.playerNickname}',
-                fontSize: 46,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Palier 2 : onde de choc, secousse, confettis, texte plus gros.
-  Widget _buildTier2(double t) {
-    final scale = Curves.elasticOut.transform(math.min(1, t * 2.0)) * 1.05;
-    final opacity = t < 0.8 ? 1.0 : 1 - (t - 0.8) / 0.2;
-    final shake = math.sin(t * math.pi * 16) * 7 * (1 - t);
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _ShockwavePainter(progress: t, color: RondaColors.teamLight(widget.team)),
-          ),
-        ),
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _FlarePainter(progress: t, color: RondaColors.gold, maxScale: 0.55),
-          ),
-        ),
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _ConfettiBurstPainter(progress: t, count: 34, spread: 0.55, seed: 11),
-          ),
-        ),
-        Center(
-          child: Transform.translate(
-            offset: Offset(shake, 0),
-            child: Opacity(
-              opacity: opacity.clamp(0, 1),
-              child: Transform.scale(
-                scale: scale,
-                child: _JuicyText(
-                  label: 'DERBA ×2 !',
-                  sub: '+${widget.points} · ${widget.playerNickname}',
-                  fontSize: 56,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Palier 3 : LE moment de la partie — voile, double onde de choc,
-  /// pluie de confettis, zoom continu, grosse secousse.
-  Widget _buildTier3(double t) {
-    final veil = t < 0.12 ? t / 0.12 : (t < 0.85 ? 1.0 : 1 - (t - 0.85) / 0.15);
-    final punch = Curves.elasticOut.transform(math.min(1, t * 1.8));
-    final zoom = punch * (1.05 + t * 0.1); // continue de grossir doucement
-    final shake = math.sin(t * math.pi * 22) * 10 * (1 - t);
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: Opacity(
-            opacity: (veil * 0.78).clamp(0, 1),
-            child: const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  colors: [Color(0xE6300808), Color(0xF20D0202)],
-                  radius: 1.0,
-                ),
-              ),
-            ),
-          ),
-        ),
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _ShockwavePainter(progress: t, color: RondaColors.gold, doubleWave: true),
-          ),
-        ),
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _FlarePainter(progress: t, color: RondaColors.goldLight, maxScale: 0.9),
-          ),
-        ),
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _ConfettiBurstPainter(progress: t, count: 70, spread: 0.95, seed: 7),
-          ),
-        ),
-        Center(
-          child: Transform.translate(
-            offset: Offset(shake, shake / 2),
-            child: Opacity(
-              opacity: veil.clamp(0, 1),
-              child: Transform.scale(
-                scale: zoom,
-                child: _JuicyText(
-                  label: 'DERBA\nROYALE !',
-                  sub: '+${widget.points} · ${widget.playerNickname}',
-                  fontSize: 66,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Typographie de jeu : contour épais sombre + remplissage dégradé or,
-/// façon titre d'arcade — lisible et punchy sur n'importe quel fond.
-class _JuicyText extends StatelessWidget {
-  final String label;
-  final String sub;
-  final double fontSize;
-
-  const _JuicyText({required this.label, required this.sub, required this.fontSize});
-
-  @override
-  Widget build(BuildContext context) {
-    final base = TextStyle(
-      fontSize: fontSize,
-      fontWeight: FontWeight.w900,
-      height: 1.02,
-      letterSpacing: 2,
-    );
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Stack(
+        return Stack(
           children: [
-            // Contour épais.
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: base.copyWith(
-                foreground: Paint()
-                  ..style = PaintingStyle.stroke
-                  ..strokeWidth = fontSize * 0.14
-                  ..strokeJoin = StrokeJoin.round
-                  ..color = const Color(0xFF3A1204),
+            if (tier == 3)
+              Positioned.fill(
+                child: Opacity(
+                  opacity: (veil * 0.78).clamp(0, 1),
+                  child: const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        colors: [Color(0xE6300808), Color(0xF20D0202)],
+                        radius: 1.0,
+                      ),
+                    ),
+                  ),
+                ),
               ),
+            _ImpactLayer(
+              t: t,
+              intensity: intensity,
+              accent: RondaColors.teamLight(widget.team),
             ),
-            // Remplissage dégradé or → orange.
-            ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFFFF3C4), Color(0xFFF2C94C), Color(0xFFE0902B)],
-                stops: [0.0, 0.55, 1.0],
-              ).createShader(bounds),
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: base.copyWith(color: Colors.white),
+            Center(
+              child: Transform.translate(
+                offset: Offset(shake, shake / 2),
+                child: Opacity(
+                  opacity: fade.clamp(0, 1),
+                  child: Transform.scale(
+                    scale: scale,
+                    child: _JuicyText(
+                      label: switch (tier) { 1 => 'DERBA !', 2 => 'DERBA ×2 !', _ => 'DERBA\nROYALE !' },
+                      sub: '+${widget.points} PTS · ${widget.playerNickname.toUpperCase()}',
+                      fontSize: switch (tier) { 1 => 46, 2 => 56, _ => 66 },
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: RondaColors.gold.withValues(alpha: 0.6)),
-          ),
-          child: Text(
-            sub,
-            style: TextStyle(
-              fontSize: math.max(14, fontSize * 0.30),
-              fontWeight: FontWeight.w700,
-              color: RondaColors.cream,
-            ),
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 }
 
-/// Missa : la table se vide — onde dorée qui balaie + pastille satisfaisante.
+/// Missa : même langage que la Derba, en plus doux (GDD 3.5 : discret
+/// mais satisfaisant) — vert « table nettoyée » au lieu de l'or.
 class MissaOverlay extends StatefulWidget {
   final String playerNickname;
   final VoidCallback onDone;
@@ -318,55 +213,25 @@ class _MissaOverlayState extends State<MissaOverlay> with SingleTickerProviderSt
       animation: _controller,
       builder: (context, _) {
         final t = _controller.value;
-        final scale = Curves.easeOutBack.transform(math.min(1, t * 2.5));
-        final opacity = t < 0.7 ? 1.0 : 1 - (t - 0.7) / 0.3;
+        final scale = Curves.elasticOut.transform(math.min(1, t * 2.0));
+        final fade = t < 0.8 ? 1.0 : 1 - (t - 0.8) / 0.2;
         return Stack(
           children: [
-            Positioned.fill(
-              child: CustomPaint(painter: _RipplePainter(progress: t, color: RondaColors.gold)),
-            ),
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _ConfettiBurstPainter(progress: t, count: 12, spread: 0.28, seed: 5),
-              ),
+            _ImpactLayer(
+              t: t,
+              intensity: 0.25,
+              accent: const Color(0xFF4E9E73),
             ),
             Center(
               child: Opacity(
-                opacity: opacity.clamp(0, 1),
+                opacity: fade.clamp(0, 1),
                 child: Transform.scale(
                   scale: scale,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 13),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF2E8B57), Color(0xFF1F6E43)],
-                      ),
-                      borderRadius: BorderRadius.circular(26),
-                      border: Border.all(color: RondaColors.goldLight, width: 2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: RondaColors.gold.withValues(alpha: 0.5),
-                          blurRadius: 18,
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.cleaning_services_rounded,
-                            color: RondaColors.goldLight, size: 22),
-                        const SizedBox(width: 8),
-                        Text(
-                          'MISSA +1 · ${widget.playerNickname}',
-                          style: const TextStyle(
-                            fontSize: 21,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1,
-                            color: RondaColors.cream,
-                          ),
-                        ),
-                      ],
-                    ),
+                  child: _JuicyText(
+                    label: 'MISSA !',
+                    sub: '+1 PT · ${widget.playerNickname.toUpperCase()}',
+                    fontSize: 42,
+                    gradient: const [Color(0xFFC8F5D8), Color(0xFF5BC98A), Color(0xFF2E8B57)],
                   ),
                 ),
               ),
@@ -374,6 +239,89 @@ class _MissaOverlayState extends State<MissaOverlay> with SingleTickerProviderSt
           ],
         );
       },
+    );
+  }
+}
+
+/// Typographie de jeu : contour épais sombre + remplissage dégradé,
+/// façon titre d'arcade — lisible et punchy sur n'importe quel fond.
+class _JuicyText extends StatelessWidget {
+  final String label;
+  final String sub;
+  final double fontSize;
+  final List<Color> gradient;
+
+  const _JuicyText({
+    required this.label,
+    required this.sub,
+    required this.fontSize,
+    this.gradient = const [Color(0xFFFFF3C4), Color(0xFFF2C94C), Color(0xFFE0902B)],
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final base = TextStyle(
+      fontSize: fontSize,
+      fontWeight: FontWeight.w900,
+      height: 1.02,
+      letterSpacing: 2,
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Stack(
+          children: [
+            // Contour épais.
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: base.copyWith(
+                foreground: Paint()
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = fontSize * 0.14
+                  ..strokeJoin = StrokeJoin.round
+                  ..color = const Color(0xFF3A1204),
+              ),
+            ),
+            // Remplissage dégradé.
+            ShaderMask(
+              shaderCallback: (bounds) => LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: gradient,
+                stops: const [0.0, 0.55, 1.0],
+              ).createShader(bounds),
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: base.copyWith(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        if (sub.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: RondaColors.gold.withValues(alpha: 0.7)),
+            ),
+            child: Text(
+              sub,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: math.max(15, fontSize * 0.30),
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
+                color: RondaColors.cream,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -413,58 +361,42 @@ class _RevealOverlayState extends State<RevealOverlay> {
       icon: anns.isEmpty ? Icons.style_rounded : Icons.celebration_rounded,
       children: [
         if (anns.isEmpty)
-          const Text(
-            'Aucune Ronda annoncée',
-            style: TextStyle(color: RondaColors.creamDark, fontSize: 16),
+          const _PanelRow(
+            icon: Icons.visibility_off_rounded,
+            label: 'AUCUNE ANNONCE',
+            value: '',
           ),
         for (final a in anns)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: RondaColors.team(a.team),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                Text(
-                  '${widget.nicknameOf(a.playerId)} — '
-                  '${a.kind == 'tringa' ? 'Tringa' : 'Ronda'} de ${rankLabel(a.rank)}',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: RondaColors.teamLight(a.team),
-                  ),
-                ),
-              ],
-            ),
+          _PanelRow(
+            icon: a.kind == 'tringa' ? Icons.auto_awesome_rounded : Icons.stars_rounded,
+            iconColor: a.kind == 'tringa' ? const Color(0xFFB65CE8) : RondaColors.goldLight,
+            label: '${widget.nicknameOf(a.playerId).toUpperCase()} — '
+                '${a.kind == 'tringa' ? 'TRINGA' : 'RONDA'} DE ${rankLabel(a.rank).toUpperCase()}',
+            value: '',
+            labelColor: RondaColors.teamLight(a.team),
           ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         for (final entry in points.entries)
-          Text(
-            '+${entry.value} points pour l\'équipe ${entry.key}',
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              color: RondaColors.gold,
-            ),
+          _PanelRow(
+            icon: Icons.add_circle_rounded,
+            iconColor: RondaColors.teamLight(entry.key),
+            label: 'ÉQUIPE ${entry.key}',
+            value: '+${entry.value} PTS',
           ),
         if (points.isEmpty && anns.isNotEmpty)
-          const Text(
-            'Égalité — aucun point',
-            style: TextStyle(fontSize: 17, color: RondaColors.creamDark),
+          const _PanelRow(
+            icon: Icons.balance_rounded,
+            label: 'ÉGALITÉ — AUCUN POINT',
+            value: '',
           ),
       ],
     );
   }
 }
 
-/// Bilan de fin de manche : butin + bonus de dernière capture.
+/// Bilan de fin de manche, précédé si besoin de l'animation de dernière
+/// capture : célébration si c'est un Roi (+5), déception si c'est un As
+/// (5 pts offerts à l'adversaire).
 class RoundEndOverlay extends StatefulWidget {
   final RoundEndEvent event;
   final VoidCallback onDone;
@@ -476,55 +408,221 @@ class RoundEndOverlay extends StatefulWidget {
 }
 
 class _RoundEndOverlayState extends State<RoundEndOverlay> {
+  late bool _showingLastCapture;
+
+  bool get _hasSpecialCapture =>
+      widget.event.lastCaptureRank == 12 || widget.event.lastCaptureRank == 1;
+
   @override
   void initState() {
     super.initState();
-    Future.delayed(kRoundEndDuration, () {
-      if (mounted) widget.onDone();
-    });
+    _showingLastCapture = _hasSpecialCapture;
+    _scheduleNext();
+  }
+
+  void _scheduleNext() {
+    if (_showingLastCapture) {
+      Future.delayed(kLastCaptureDuration, () {
+        if (!mounted) return;
+        setState(() => _showingLastCapture = false);
+        _scheduleNext();
+      });
+    } else {
+      Future.delayed(kRoundEndDuration, () {
+        if (mounted) widget.onDone();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_showingLastCapture) {
+      return _LastCaptureOverlay(
+        isKing: widget.event.lastCaptureRank == 12,
+        team: widget.event.lastCaptureTeam ?? 'A',
+      );
+    }
+
     final e = widget.event;
     return _AnnouncementPanel(
       title: 'FIN DE LA MANCHE',
       icon: Icons.emoji_events_rounded,
       children: [
-        Text(
-          'Cartes : Équipe A ${e.cardCounts['A']} — ${e.cardCounts['B']} Équipe B',
-          style: const TextStyle(fontSize: 17, color: RondaColors.cream),
+        _PanelRow(
+          icon: Icons.style_rounded,
+          label: 'CARTES RAMASSÉES',
+          value: 'A ${e.cardCounts['A']} — ${e.cardCounts['B']} B',
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         for (final entry in e.butinPoints.entries)
-          Text(
-            'Butin : +${entry.value} pour l\'équipe ${entry.key}',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: RondaColors.gold,
-            ),
+          _PanelRow(
+            icon: Icons.savings_rounded,
+            iconColor: RondaColors.teamLight(entry.key),
+            label: 'BUTIN ÉQUIPE ${entry.key}',
+            value: '+${entry.value} PTS',
           ),
         if (e.butinPoints.isEmpty)
-          const Text(
-            'Butin : égalité, aucun point',
-            style: TextStyle(fontSize: 16, color: RondaColors.creamDark),
+          const _PanelRow(
+            icon: Icons.balance_rounded,
+            label: 'BUTIN : ÉGALITÉ',
+            value: '0 PT',
           ),
         for (final entry in e.bonusPoints.entries)
-          Text(
-            'Dernière capture : +${entry.value} pour l\'équipe ${entry.key}',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: RondaColors.goldLight,
-            ),
+          _PanelRow(
+            icon: e.lastCaptureRank == 12 ? Icons.workspace_premium_rounded : Icons.warning_rounded,
+            iconColor: e.lastCaptureRank == 12 ? RondaColors.goldLight : const Color(0xFFE05A2B),
+            label: e.lastCaptureRank == 12
+                ? 'DERNIÈRE PRISE AU ROI'
+                : 'AS EN DERNIÈRE PRISE',
+            value: '+${entry.value} PTS ÉQ. ${entry.key}',
           ),
       ],
     );
   }
 }
 
-/// Panneau central avec entrée élastique, dégradé bois et cadre doré.
+/// Animation dédiée à la dernière capture : Roi = triomphe doré,
+/// As = douche froide bleutée.
+class _LastCaptureOverlay extends StatefulWidget {
+  final bool isKing;
+  final String team;
+
+  const _LastCaptureOverlay({required this.isKing, required this.team});
+
+  @override
+  State<_LastCaptureOverlay> createState() => _LastCaptureOverlayState();
+}
+
+class _LastCaptureOverlayState extends State<_LastCaptureOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: kLastCaptureDuration,
+  )..forward();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final t = _controller.value;
+        final veil = t < 0.15 ? t / 0.15 : (t < 0.85 ? 1.0 : 1 - (t - 0.85) / 0.15);
+        final scale = Curves.elasticOut.transform(math.min(1, t * 1.8));
+
+        if (widget.isKing) {
+          // Triomphe : voile chaud, double onde, confettis dorés, couronne.
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: Opacity(
+                  opacity: (veil * 0.6).clamp(0, 1),
+                  child: const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        colors: [Color(0xCC4A3200), Color(0xE61A0F00)],
+                        radius: 1.0,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              _ImpactLayer(
+                t: t,
+                intensity: 0.85,
+                accent: RondaColors.goldLight,
+              ),
+              Center(
+                child: Opacity(
+                  opacity: veil.clamp(0, 1),
+                  child: Transform.scale(
+                    scale: scale,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.workspace_premium_rounded,
+                          size: 84,
+                          color: RondaColors.goldLight,
+                          shadows: const [Shadow(color: Colors.black87, blurRadius: 16)],
+                        ),
+                        _JuicyText(
+                          label: 'PRISE ROYALE !',
+                          sub: 'LE ROI CONCLUT · +5 PTS ÉQUIPE ${widget.team}',
+                          fontSize: 48,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        // Déception : voile bleu froid, pluie de confettis gris qui tombent.
+        final droop = Curves.easeIn.transform(t) * 26;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: Opacity(
+                opacity: (veil * 0.65).clamp(0, 1),
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      colors: [Color(0xCC1A2A40), Color(0xE6080E18)],
+                      radius: 1.0,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _SadRainPainter(progress: t),
+              ),
+            ),
+            Center(
+              child: Opacity(
+                opacity: veil.clamp(0, 1),
+                child: Transform.translate(
+                  offset: Offset(0, droop),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Transform.rotate(
+                        angle: 0.15 * t,
+                        child: const Icon(
+                          Icons.heart_broken_rounded,
+                          size: 74,
+                          color: Color(0xFF9FB4CC),
+                          shadows: [Shadow(color: Colors.black87, blurRadius: 14)],
+                        ),
+                      ),
+                      _JuicyText(
+                        label: 'AÏE... L\'AS !',
+                        sub: 'DERNIÈRE PRISE À L\'AS · +5 PTS POUR L\'ADVERSAIRE',
+                        fontSize: 44,
+                        gradient: const [Color(0xFFD4E2F4), Color(0xFF8FA9C8), Color(0xFF5A7396)],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Panneau central : entrée élastique, fort contraste, rangées lisibles.
 class _AnnouncementPanel extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -535,51 +633,45 @@ class _AnnouncementPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black.withValues(alpha: 0.6),
+      color: Colors.black.withValues(alpha: 0.65),
       child: Center(
         child: TweenAnimationBuilder<double>(
           tween: Tween(begin: 0, end: 1),
           duration: const Duration(milliseconds: 420),
           curve: Curves.easeOutBack,
-          builder: (_, t, child) => Transform.scale(scale: 0.7 + 0.3 * t, child: Opacity(opacity: t.clamp(0, 1), child: child)),
+          builder: (_, t, child) =>
+              Transform.scale(scale: 0.7 + 0.3 * t, child: Opacity(opacity: t.clamp(0, 1), child: child)),
           child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 28),
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            margin: const EdgeInsets.symmetric(horizontal: 24),
+            constraints: const BoxConstraints(maxWidth: 380),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Color(0xFF3D2718), Color(0xFF221208)],
+                colors: [Color(0xFF43301D), Color(0xFF241407)],
               ),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: RondaColors.gold, width: 2),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: RondaColors.gold, width: 3),
               boxShadow: [
-                BoxShadow(color: RondaColors.gold.withValues(alpha: 0.25), blurRadius: 30),
+                BoxShadow(color: RondaColors.gold.withValues(alpha: 0.3), blurRadius: 34),
                 BoxShadow(color: Colors.black.withValues(alpha: 0.7), blurRadius: 24),
               ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, color: RondaColors.goldLight, size: 30),
+                Icon(icon, color: RondaColors.goldLight, size: 34),
                 const SizedBox(height: 6),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: RondaColors.gold,
-                    letterSpacing: 2,
-                  ),
-                ),
+                _JuicyText(label: title, sub: '', fontSize: 26),
                 Container(
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  height: 1.5,
-                  width: 120,
+                  margin: const EdgeInsets.only(top: 2, bottom: 14),
+                  height: 2,
+                  width: 140,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(colors: [
                       Colors.transparent,
-                      RondaColors.gold.withValues(alpha: 0.8),
+                      RondaColors.gold.withValues(alpha: 0.9),
                       Colors.transparent,
                     ]),
                   ),
@@ -589,6 +681,65 @@ class _AnnouncementPanel extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Rangée de panneau à fort contraste : icône ronde, libellé, valeur en or.
+class _PanelRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String value;
+  final Color labelColor;
+
+  const _PanelRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.iconColor = RondaColors.goldLight,
+    this.labelColor = RondaColors.cream,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: iconColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.6,
+                color: labelColor,
+              ),
+            ),
+          ),
+          if (value.isNotEmpty)
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.5,
+                color: RondaColors.goldLight,
+                shadows: [Shadow(color: Colors.black54, blurRadius: 3)],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -607,7 +758,8 @@ class _FlarePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.shortestSide * maxScale * Curves.easeOut.transform(math.min(1, progress * 1.6));
+    final radius =
+        size.shortestSide * maxScale * Curves.easeOut.transform(math.min(1, progress * 1.6));
     final opacity = progress < 0.5 ? 1.0 : (1 - (progress - 0.5) / 0.5);
     if (radius <= 0) return;
     canvas.drawCircle(
@@ -667,7 +819,7 @@ class _ConfettiBurstPainter extends CustomPainter {
   final double spread; // fraction de l'écran couverte
   final int seed;
 
-  static const _palette = [
+  static const _defaultPalette = [
     Color(0xFFF2C94C),
     Color(0xFFE0902B),
     Color(0xFFC75B5B),
@@ -684,6 +836,7 @@ class _ConfettiBurstPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    const colors = _defaultPalette;
     final center = Offset(size.width / 2, size.height / 2);
     final rng = math.Random(seed); // graine fixe : trajectoires stables
     final gravity = size.height * 0.55;
@@ -693,7 +846,7 @@ class _ConfettiBurstPainter extends CustomPainter {
       final speed = size.shortestSide * spread * (0.5 + rng.nextDouble());
       final spin = (rng.nextDouble() - 0.5) * 14;
       final confettiSize = 4.0 + rng.nextDouble() * 7;
-      final color = _palette[i % _palette.length];
+      final color = colors[i % colors.length];
       final isRect = rng.nextBool();
 
       final t = progress;
@@ -726,28 +879,32 @@ class _ConfettiBurstPainter extends CustomPainter {
       oldDelegate.progress != progress;
 }
 
-/// Ondes concentriques discrètes (Missa).
-class _RipplePainter extends CustomPainter {
+/// Pluie froide et lente pour la déception de l'As en dernière prise.
+class _SadRainPainter extends CustomPainter {
   final double progress;
-  final Color color;
 
-  _RipplePainter({required this.progress, required this.color});
+  _SadRainPainter({required this.progress});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final maxRadius = size.shortestSide * 0.6;
-    for (final delay in [0.0, 0.2]) {
-      final t = ((progress - delay) / (1 - delay)).clamp(0.0, 1.0);
-      if (t <= 0) continue;
-      final paint = Paint()
-        ..color = color.withValues(alpha: (1 - t) * 0.45)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3;
-      canvas.drawCircle(center, maxRadius * Curves.easeOut.transform(t), paint);
+    final rng = math.Random(13);
+    for (var i = 0; i < 26; i++) {
+      final x = rng.nextDouble() * size.width;
+      final phase = rng.nextDouble();
+      final speed = 0.5 + rng.nextDouble() * 0.5;
+      final y = ((progress * speed + phase) % 1.0) * (size.height + 30) - 15;
+      final opacity = (1 - progress * 0.4).clamp(0.0, 1.0) * 0.5;
+      canvas.drawLine(
+        Offset(x, y),
+        Offset(x - 2, y + 14),
+        Paint()
+          ..color = const Color(0xFF9FB4CC).withValues(alpha: opacity)
+          ..strokeWidth = 2
+          ..strokeCap = StrokeCap.round,
+      );
     }
   }
 
   @override
-  bool shouldRepaint(covariant _RipplePainter oldDelegate) => oldDelegate.progress != progress;
+  bool shouldRepaint(covariant _SadRainPainter oldDelegate) => oldDelegate.progress != progress;
 }

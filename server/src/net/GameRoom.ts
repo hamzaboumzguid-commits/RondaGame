@@ -14,6 +14,8 @@ import { PublicState, ServerMessage, RevealedAnnouncement } from "./protocol.js"
 
 const MAX_PLAYERS = 4;
 const DEAL_SIZES = [4, 3, 3] as const;
+/** Temps de réflexion par tour : passé ce délai, la carte la plus à gauche est jouée d'office. */
+export const TURN_TIMEOUT_MS = 10_000;
 
 /** Abstraction de la connexion sortante — une vraie socket ws en prod, un stub en test. */
 export interface PlayerConnection {
@@ -54,6 +56,8 @@ export class GameRoom {
   private lastCapture: { card: Card; team: TeamId } | null = null;
   private scores: Record<TeamId, number> = { A: 0, B: 0 };
   private winningTeam: TeamId | "" = "";
+  private turnTimer: ReturnType<typeof setTimeout> | null = null;
+  private turnEndsAt = 0;
 
   /** Appelé quand la room doit être détruite (partie finie ou abandonnée). */
   onDispose: () => void = () => {};
@@ -91,6 +95,7 @@ export class GameRoom {
     if (this.phase !== "lobby" && this.phase !== "gameOver") {
       // GDD 3.1 : pas de reconnexion en v1 — un départ en cours de partie annule tout.
       const leaver = this.players[idx];
+      this.clearTurnTimer();
       this.broadcast({ type: "gameAbandoned", reason: `${leaver.nickname} a quitté la partie` });
       this.phase = "gameOver";
       this.onDispose();
@@ -163,11 +168,37 @@ export class GameRoom {
     this.turnOrder = this.rotationFrom(firstPlayerSeat(this.leadSeat));
     this.turnIdx = 0;
     this.phase = "playing";
+    this.armTurnTimer();
 
     this.broadcastState();
     for (const player of this.players) {
       player.conn.send({ type: "yourHand", cards: [...player.hand] });
     }
+  }
+
+  // ---------- Timer de tour (10 s, GDD 3.5) ----------
+
+  private armTurnTimer(): void {
+    this.clearTurnTimer();
+    if (this.phase !== "playing") return;
+    this.turnEndsAt = Date.now() + TURN_TIMEOUT_MS;
+    this.turnTimer = setTimeout(() => this.autoPlayCurrentTurn(), TURN_TIMEOUT_MS);
+  }
+
+  private clearTurnTimer(): void {
+    if (this.turnTimer) {
+      clearTimeout(this.turnTimer);
+      this.turnTimer = null;
+    }
+    this.turnEndsAt = 0;
+  }
+
+  /** Temps écoulé : la carte la plus à gauche du joueur courant est jouée d'office. */
+  private autoPlayCurrentTurn(): void {
+    if (this.phase !== "playing") return;
+    const player = this.currentPlayer();
+    if (!player || player.hand.length === 0) return;
+    this.playCard(player.id, player.hand[0].id);
   }
 
   private detectAnnouncements(): Announcement[] {
@@ -253,10 +284,12 @@ export class GameRoom {
     do {
       this.turnIdx = (this.turnIdx + 1) % this.turnOrder.length;
     } while (this.currentPlayer()!.hand.length === 0);
+    this.armTurnTimer();
     this.broadcastState();
   }
 
   private endSubRound(): void {
+    this.clearTurnTimer();
     const points = resolveRondaTringa(this.announcements);
     for (const team of ["A", "B"] as TeamId[]) {
       if (points[team]) this.addPoints(team, points[team]!);
@@ -299,6 +332,10 @@ export class GameRoom {
       butinPoints,
       bonusPoints,
       cardCounts: { A: this.capturedByTeam.A.length, B: this.capturedByTeam.B.length },
+      // Pour les animations Roi (+5) / As (5 à l'adverse) de dernière capture.
+      lastCapture: this.lastCapture
+        ? { rank: this.lastCapture.card.rank, team: this.lastCapture.team }
+        : null,
     });
 
     // Butin appliqué avant le bonus de dernière capture ; le premier à franchir 41 gagne.
@@ -326,6 +363,7 @@ export class GameRoom {
     for (const team of ["A", "B"] as TeamId[]) {
       if (this.scores[team] >= TARGET_SCORE) {
         this.winningTeam = team;
+        this.clearTurnTimer();
         this.phase = "gameOver";
         this.broadcast({ type: "gameOver", winningTeam: team });
         this.broadcastState();
@@ -361,7 +399,14 @@ export class GameRoom {
   }
 
   publicState(): PublicState {
-    const announcedIds = new Set(this.announcements.map((a) => a.playerId));
+    // La pastille révèle le TYPE d'annonce (Ronda vs Tringa) mais jamais la
+    // valeur (décision utilisateur 2026-07-12, GDD 2.5). Tringa prime.
+    const kindByPlayer = new Map<string, "ronda" | "tringa">();
+    for (const a of this.announcements) {
+      if (a.kind === "tringa" || !kindByPlayer.has(a.playerId)) {
+        kindByPlayer.set(a.playerId, a.kind);
+      }
+    }
     return {
       phase: this.phase,
       roomCode: this.roomCode,
@@ -371,12 +416,13 @@ export class GameRoom {
         seat: p.seat,
         team: p.team,
         handCount: p.hand.length,
-        hasAnnouncement: this.phase === "playing" && announcedIds.has(p.id),
+        announcementKind: this.phase === "playing" ? kindByPlayer.get(p.id) ?? "" : "",
         isHost: p.id === this.hostId,
       })),
       tablePile: [...this.table.pile],
       leadPlayerId: this.players.find((p) => p.seat === this.leadSeat)?.id ?? "",
       currentTurnPlayerId: this.phase === "playing" ? this.currentPlayer()?.id ?? "" : "",
+      turnEndsAt: this.phase === "playing" ? this.turnEndsAt : 0,
       scores: { ...this.scores },
       winningTeam: this.winningTeam,
       roundNumber: this.roundNumber,

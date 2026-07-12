@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GameRoom, PlayerConnection } from "./GameRoom.js";
 import { Card, TARGET_SCORE } from "../game/types.js";
 import { PublicState, ServerMessage } from "./protocol.js";
@@ -127,18 +127,53 @@ describe("GameRoom — partie complète", () => {
     }
   });
 
-  it("les badges d'annonce sont anonymes : présence signalée sans valeur ni type", () => {
+  it("la pastille d'annonce révèle le type (ronda/tringa) mais jamais la valeur", () => {
     const { room, players } = setupFullRoom();
     room.start("p0");
 
     const state = room.publicState();
     for (const p of state.players) {
-      // le champ est un booléen : impossible de déduire ronda vs tringa ou la valeur
-      expect(typeof p.hasAnnouncement).toBe("boolean");
+      // le champ expose uniquement le type, jamais le rang concerné
+      expect(["", "ronda", "tringa"]).toContain(p.announcementKind);
     }
     // aucune annonce détaillée diffusée avant la fin de la sous-manche
     for (const p of players) {
       expect(p.messagesOfType("subRoundReveal")).toHaveLength(0);
+    }
+  });
+
+  it("timer de tour : après 10 s sans jouer, la carte la plus à gauche part toute seule", () => {
+    vi.useFakeTimers();
+    try {
+      const { room, players } = setupFullRoom();
+      room.start("p0");
+
+      const state = room.publicState();
+      expect(state.turnEndsAt).toBeGreaterThan(0);
+      const current = players.find((p) => p.id === state.currentTurnPlayerId)!;
+      const leftmost = current.hand[0];
+
+      vi.advanceTimersByTime(10_000);
+
+      // La carte de gauche a été jouée : posée ou capturée.
+      const placed = current.messagesOfType("cardPlaced").some((m) => m.card.id === leftmost.id);
+      const captured = current
+        .messagesOfType("captureEvent")
+        .some((m) => m.playedCardId === leftmost.id);
+      expect(placed || captured).toBe(true);
+
+      // Le tour est passé au joueur suivant, avec une nouvelle échéance.
+      const after = room.publicState();
+      expect(after.currentTurnPlayerId).not.toBe(current.id);
+      expect(after.turnEndsAt).toBeGreaterThan(0);
+
+      // Toute une partie peut se jouer uniquement au timer, sans crash.
+      for (let i = 0; i < 3000 && room.phase !== "gameOver"; i++) {
+        vi.advanceTimersByTime(10_000);
+      }
+      expect(room.phase).toBe("gameOver");
+    } finally {
+      vi.useRealTimers();
     }
   });
 

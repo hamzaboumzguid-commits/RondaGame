@@ -47,7 +47,7 @@ Sens horaire, en commençant par le joueur à la droite du Lead. Le Lead joue do
 
 - Une **Ronda** = 2 cartes de même valeur en main. Une **Tringa** = 3 cartes de même valeur en main.
 - Détection **automatique** par le système dès la distribution (pas d'action du joueur).
-- Un badge/icône neutre est affiché à côté du joueur concerné dès la distribution ("ce joueur a annoncé quelque chose"), **sans révéler ni la valeur ni le nombre de cartes (Ronda vs Tringa)**.
+- Une pastille bien visible est affichée à côté du joueur concerné dès la distribution, indiquant **le type d'annonce (« RONDA » ou « TRINGA »)** mais **jamais la valeur**. (Décision 2026-07-12 : révéler le type améliore la lecture du jeu ; initialement le badge était totalement anonyme.)
 - La valeur réelle n'est révélée qu'à la fin de la petite manche en cours (après que les 16 ou 12 cartes de cette distribution ont toutes été jouées).
 
 ### 2.6 Capturer des cartes
@@ -138,7 +138,11 @@ Exclus explicitement de la v1 : chat (texte/vocal/emoji), historique/scoreboard 
 - Cartes : jeu espagnol stylisé dans cette identité visuelle.
 - À affiner en phase design dédiée avec maquettes concrètes avant implémentation UI.
 
-### 3.4 Animations (Derba / Missa)
+### 3.4 Timer de tour
+- Chaque joueur dispose de **10 secondes** pour jouer. Passé ce délai, le serveur joue d'office **la carte la plus à gauche** de sa main (capture obligatoire appliquée normalement).
+- Compte à rebours visible par tous (anneau autour de l'avatar du joueur courant, barre au-dessus de la main pour soi).
+
+### 3.5 Animations (Derba / Missa)
 - **Bloquantes courtes (1-2s max)** : chaque déclenchement marque une pause volontaire pour créer l'impact, sans casser le rythme global.
 - **Derba** : escalade visuelle sur les 3 paliers.
   - Palier 1 (1 pt) : effet léger, flash/glow discret sur les cartes concernées.
@@ -164,4 +168,5 @@ Exclus explicitement de la v1 : chat (texte/vocal/emoji), historique/scoreboard 
 - 2026-07-11 : recueil de besoin initial complet (règles clarifiées, scope v1 figé, style visuel marocain choisi, pas d'auth/compte, pas de reconnexion en v1). Document créé.
 - 2026-07-11 : stack validée (Flutter + Colyseus), scaffolding, moteur de règles testé (29 tests).
 - 2026-07-11 : pivot backend Colyseus → WebSocket pur + JSON (pas de client Dart pour Colyseus). Fin de partie immédiate à 41 pts implémentée (vérification après chaque attribution de points, pas seulement en fin de manche). App Flutter v1 complète : accueil, lobby, table de jeu, animations Derba (3 paliers)/Missa, victoire. E2E validé : 4 clients Flutter réels jouent une partie complète contre le serveur.
+- 2026-07-12 (bis) : deuxième passe de feedback. Pastille d'annonce : révèle désormais RONDA vs TRINGA (pas la valeur). Timer de tour de 10 s avec auto-jeu de la carte la plus à gauche (section 3.4). Animations de dernière capture (Roi = célébration, As = déception). Police display « Lilita One » (OFL), tout le texte en majuscules. Direction artistique : assets nano-banana-2 (cartes, fonds, dos) + UI « chunky » façon Caveboy Escape.
 - 2026-07-12 : premier test utilisateur. Trois corrections de règles : (1) **capture obligatoire sur jumelle** — interdit de poser une carte à côté d'une carte de même valeur (clarifié avec l'utilisateur) ; (2) la **suite ascendante** se lit sur les valeurs présentes sur la table, pas sur l'ordre de pose (bug : un 4 laissait le 5 et le 6) ; (3) la **surenchère de Derba** était injouable (la réponse tombait sur table vide et cassait la chaîne) — corrigée, et décision utilisateur : le surenchérisseur emporte tout le paquet de la chaîne (butin). Une Derba exige la carte *juste* posée, pas une carte ancienne. Le choix capturer/poser disparaît du protocole et de l'UI (le serveur capture d'office).

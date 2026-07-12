@@ -26,7 +26,8 @@ export interface PublicPlayer {
   seat: number;
   team: TeamId;
   handCount: number;
-  hasAnnouncement: boolean; // badge neutre, sans valeur ni type (GDD 2.5)
+  // Pastille d'annonce : révèle le TYPE (ronda/tringa) mais jamais la valeur (GDD 2.5).
+  announcementKind: "" | "ronda" | "tringa";
   isHost: boolean;
 }
 
@@ -37,6 +38,8 @@ export interface PublicState {
   tablePile: Card[];
   leadPlayerId: string;
   currentTurnPlayerId: string;
+  /** Échéance (epoch ms) du tour courant — timer de 10 s, 0 hors phase de jeu. */
+  turnEndsAt: number;
   scores: Record<TeamId, number>;
   winningTeam: TeamId | "";
   roundNumber: number;
@@ -76,6 +79,7 @@ export type ServerMessage =
       butinPoints: Partial<Record<TeamId, number>>;
       bonusPoints: Partial<Record<TeamId, number>>;
       cardCounts: Record<TeamId, number>;
+      lastCapture: { rank: number; team: TeamId } | null;
     }
   | { type: "gameOver"; winningTeam: TeamId }
   | { type: "gameAbandoned"; reason: string }

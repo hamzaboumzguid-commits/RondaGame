@@ -23,6 +23,9 @@ abstract final class RondaColors {
 ThemeData buildRondaTheme() {
   final base = ThemeData(
     useMaterial3: true,
+    // Police display « jeu casual » (Lilita One, OFL) appliquée partout —
+    // tout le texte du jeu est en majuscules, elle porte l'identité seule.
+    fontFamily: 'Lilita',
     colorScheme: ColorScheme.fromSeed(
       seedColor: RondaColors.red,
       brightness: Brightness.dark,
@@ -37,6 +40,7 @@ ThemeData buildRondaTheme() {
     textTheme: base.textTheme.apply(
       bodyColor: RondaColors.cream,
       displayColor: RondaColors.cream,
+      fontFamily: 'Lilita',
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(

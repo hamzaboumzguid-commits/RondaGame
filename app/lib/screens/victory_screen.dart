@@ -90,7 +90,7 @@ class _VictoryScreenState extends State<VictoryScreen> with SingleTickerProvider
                       child: Column(
                         children: [
                           Text(
-                            'L\'équipe ${widget.winningTeam} remporte la partie',
+                            'L\'ÉQUIPE ${widget.winningTeam} REMPORTE LA PARTIE',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
