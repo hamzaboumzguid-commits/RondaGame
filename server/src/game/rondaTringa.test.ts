@@ -85,4 +85,43 @@ describe("resolveRondaTringa", () => {
     const pts = resolveRondaTringa([ann("A", "tringa", 7), ann("B", "tringa", 2)]);
     expect(pts).toEqual({ B: 5 });
   });
+
+  it("3 Rondas, les deux meilleures à égalité -> annulation, personne ne marque", () => {
+    const pts = resolveRondaTringa([
+      ann("A", "ronda", 3, "p1"),
+      ann("B", "ronda", 7, "p2"),
+      ann("A", "ronda", 7, "p3"),
+    ]);
+    expect(pts).toEqual({});
+  });
+
+  it("aucune annonce -> objet de points vide", () => {
+    expect(resolveRondaTringa([])).toEqual({});
+  });
+
+  it("mode 1v1 : 4 Rondas, la plus GRANDE gagne (pas la plus petite)", () => {
+    const pts = resolveRondaTringa(
+      [
+        ann("A", "ronda", 5, "p1"),
+        ann("B", "ronda", 7, "p2"),
+        ann("A", "ronda", 3, "p3"),
+        ann("B", "ronda", 12, "p4"),
+      ],
+      "1v1",
+    );
+    expect(pts).toEqual({ B: 4 });
+  });
+
+  it("mode 1v1 : égalité sur la meilleure Ronda -> annulation même à 4", () => {
+    const pts = resolveRondaTringa(
+      [
+        ann("A", "ronda", 12, "p1"),
+        ann("B", "ronda", 12, "p2"),
+        ann("A", "ronda", 3, "p3"),
+        ann("B", "ronda", 5, "p4"),
+      ],
+      "1v1",
+    );
+    expect(pts).toEqual({});
+  });
 });

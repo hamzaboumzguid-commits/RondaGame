@@ -45,12 +45,14 @@ void main() {
 
     try {
       // --- Création et jonction ---
+      await host.connect(url: url);
       await host.createRoom('Hôte');
       await waitUntil(() => host.roomCode != null, reason: 'code de room jamais reçu');
       final code = host.roomCode!;
       expect(code, matches(RegExp(r'^[A-Z2-9]{5}$')));
 
       for (final (i, guest) in guests.indexed) {
+        await guest.connect(url: url);
         await guest.joinRoom(code, 'Invité${i + 1}');
       }
       await waitUntil(
@@ -117,8 +119,10 @@ void main() {
     final all = [host, guest];
 
     try {
+      await host.connect(url: url);
       await host.createRoom('Hôte', mode: '1v1');
       await waitUntil(() => host.roomCode != null, reason: 'code de room jamais reçu');
+      await guest.connect(url: url);
       await guest.joinRoom(host.roomCode!, 'Rival');
       await waitUntil(
         () => all.every((c) => c.state?.players.length == 2),

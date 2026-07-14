@@ -185,4 +185,30 @@ describe("Table.play — Derba et surenchère", () => {
     const ev = t.play(player("D", "B"), card(4, "espadas")); // simple pose
     expect(ev).toBeNull();
   });
+
+  it("palier 3 = plafond dur : la chaîne se referme définitivement, aucune surenchère possible au-delà (4 exemplaires épuisés)", () => {
+    const t = new Table();
+    t.play(player("A"), card(4, "oros"));
+    t.play(player("B", "B"), card(4, "copas")); // palier 1
+    t.play(player("C"), card(4, "espadas")); // palier 2
+    const ev = t.play(player("D", "B"), card(4, "bastos")); // palier 3 (max, 4e et dernier exemplaire)
+    expect(ev!.derbaTier).toBe(3);
+    expect(ev!.cardsCaptured).toHaveLength(4);
+    // Les 4 exemplaires du rang 4 sont désormais tous capturés : la chaîne se
+    // referme (pas de palier 4 possible, il ne reste plus de carte de ce rang
+    // en jeu). pendingChainRank retombe à null, aucun paquet n'attend plus.
+    expect(t.pendingChainRank).toBeNull();
+    expect(t.pendingChainCards).toHaveLength(0);
+  });
+
+  it("après une Derba (pas juste une pose), une capture tardive de la même carte n'est plus une Derba", () => {
+    const t = new Table();
+    t.play(player("A"), card(4, "oros")); // A pose
+    t.play(player("B", "B"), card(4, "copas")); // B Derba palier 1 -> table vidée (Missa)
+    t.play(player("C"), card(7, "oros")); // C pose un 7 (chaîne rompue, pas de jumelle)
+    t.play(player("D", "B"), card(2, "oros")); // D pose un 2 (le 7 n'est plus "juste posé")
+    const ev = t.play(player("A"), card(7, "copas")); // A capture le 7 devenu ancien
+    expect(ev).not.toBeNull();
+    expect(ev!.isDerba).toBe(false);
+  });
 });

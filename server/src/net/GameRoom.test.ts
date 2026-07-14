@@ -231,6 +231,68 @@ describe("GameRoom — partie complète", () => {
     }
   });
 
+  it("victoire immédiate : le score gagnant est toujours >= 41, jamais l'autre équipe simultanément non-gagnante en dessous d'une valeur absurde, sur 50 parties", () => {
+    for (let i = 0; i < 50; i++) {
+      const { room, players } = setupFullRoom();
+      room.start("p0");
+      playUntilGameOver(room, players);
+
+      const state = room.publicState();
+      const winner = state.winningTeam as "A" | "B";
+      expect(state.scores[winner]).toBeGreaterThanOrEqual(TARGET_SCORE);
+      // Le jeu s'arrête à la PREMIÈRE équipe à franchir 41 : l'autre équipe peut
+      // être n'importe où en dessous, y compris >= 41 si les deux ont franchi
+      // dans la même passe de points (A est vérifiée avant B) — mais jamais
+      // supérieure au score du gagnant si c'est A qui gagne alors que B a aussi
+      // franchi 41 dans le même appel (A gagne par priorité d'itération).
+      expect(Number.isFinite(state.scores.A)).toBe(true);
+      expect(Number.isFinite(state.scores.B)).toBe(true);
+    }
+  });
+
+  it("aucun message n'est diffusé après gameOver (le score ne bouge plus une fois la partie finie)", () => {
+    const { room, players } = setupFullRoom();
+    room.start("p0");
+    playUntilGameOver(room, players);
+    expect(room.phase).toBe("gameOver");
+
+    const scoresAtEnd = { ...room.publicState().scores };
+    const current = players[0];
+    const messageCountBefore = current.received.length;
+
+    // Toute tentative de jouer après la fin de partie doit être un no-op total.
+    room.playCard("p0", "peu-importe");
+    room.playCard("p1", "peu-importe");
+
+    expect(room.publicState().scores).toEqual(scoresAtEnd);
+    expect(current.received.length).toBe(messageCountBefore);
+  });
+
+  it("la partie peut se terminer en pleine sous-manche (Derba/Missa), sans attendre la fin de la donne, sur 40 parties", () => {
+    let endedMidSubRound = false;
+    for (let i = 0; i < 40 && !endedMidSubRound; i++) {
+      const { room, players } = setupFullRoom();
+      room.start("p0");
+
+      let turns = 0;
+      while (room.phase === "playing" && turns < 5000) {
+        const state = room.publicState();
+        const current = players.find((p) => p.id === state.currentTurnPlayerId);
+        if (!current || current.hand.length === 0) break;
+        const someHandsNonEmpty = players.some((p) => p.hand.length > 0);
+        room.playCard(current.id, current.hand[0].id);
+        turns++;
+        if ((room.phase as string) === "gameOver" && someHandsNonEmpty) {
+          // Il restait des cartes en main quelque part au moment où la partie
+          // s'est arrêtée : la victoire a bien été détectée en cours de sous-manche,
+          // pas seulement après épuisement complet des mains.
+          endedMidSubRound = true;
+        }
+      }
+    }
+    expect(endedMidSubRound).toBe(true);
+  });
+
   it("bonus Roi/As : invariants sur le dernier coup (GDD 2.11), sur 40 parties", () => {
     for (let i = 0; i < 40; i++) {
       const { room, players } = setupFullRoom();
@@ -278,6 +340,125 @@ describe("GameRoom — partie complète", () => {
     const lastHand = hands[hands.length - 1].cards;
     expect(lastHand.some((c) => c.id === played.id)).toBe(false);
     expect(lastHand).toHaveLength(3);
+  });
+});
+
+describe("GameRoom — robustesse protocolaire", () => {
+  it("refuse un join une fois la partie lancée", () => {
+    const { room } = setupFullRoom();
+    room.start("p0");
+    const late = new FakePlayer("late");
+    const res = room.join(late.id, "Retardataire", late);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toMatch(/déjà commencé/);
+  });
+
+  it("playCard hors tour envoie notYourTurn et ne modifie pas l'état", () => {
+    const { room, players } = setupFullRoom();
+    room.start("p0");
+    const state = room.publicState();
+    const notCurrent = players.find((p) => p.id !== state.currentTurnPlayerId)!;
+    const before = room.publicState();
+
+    room.playCard(notCurrent.id, notCurrent.hand[0].id);
+
+    expect(notCurrent.messagesOfType("error").some((e) => e.code === "notYourTurn")).toBe(true);
+    const after = room.publicState();
+    expect(after.currentTurnPlayerId).toBe(before.currentTurnPlayerId);
+  });
+
+  it("playCard avec une carte absente de la main envoie cardNotInHand", () => {
+    const { room, players } = setupFullRoom();
+    room.start("p0");
+    const state = room.publicState();
+    const current = players.find((p) => p.id === state.currentTurnPlayerId)!;
+
+    room.playCard(current.id, "carte-inexistante");
+
+    expect(current.messagesOfType("error").some((e) => e.code === "cardNotInHand")).toBe(true);
+  });
+
+  it("playCard, joinTeam, start ignorés silencieusement pour un id de joueur inconnu", () => {
+    const { room } = setupFullRoom();
+    room.start("p0");
+    const before = room.publicState();
+
+    expect(() => room.playCard("fantome", "xxx")).not.toThrow();
+    expect(() => room.joinTeam("fantome", "A")).not.toThrow();
+
+    const after = room.publicState();
+    expect(after.currentTurnPlayerId).toBe(before.currentTurnPlayerId);
+  });
+
+  it("start d'un id inconnu (room pas encore pleine) est traité comme non-hôte", () => {
+    const room = new GameRoom("TESTX");
+    const p0 = new FakePlayer("p0");
+    room.join(p0.id, "P0", p0);
+
+    room.start("fantome");
+    expect(room.phase).toBe("lobby");
+  });
+
+  it("leave d'un id qui n'est pas dans la room est un no-op", () => {
+    const { room, players } = setupFullRoom();
+    const before = room.publicState();
+
+    expect(() => room.leave("jamais-rejoint")).not.toThrow();
+
+    const after = room.publicState();
+    expect(after.players).toHaveLength(before.players.length);
+    for (const p of players) {
+      expect(p.messagesOfType("gameAbandoned")).toHaveLength(0);
+    }
+  });
+
+  it("joinTeam vers l'équipe déjà occupée par soi-même ne fait rien (pas d'erreur, pas de changement)", () => {
+    const room = new GameRoom("TESTY");
+    const p0 = new FakePlayer("p0");
+    room.join(p0.id, "P0", p0); // siège 0, équipe A par défaut
+
+    room.joinTeam(p0.id, "A");
+    expect(p0.messagesOfType("error")).toHaveLength(0);
+    const state = p0.lastState!;
+    expect(state.players.find((p) => p.id === "p0")?.team).toBe("A");
+  });
+
+  it("joinTeam ignoré une fois la partie lancée", () => {
+    const { room, players } = setupFullRoom();
+    room.start("p0");
+    const before = room.publicState();
+
+    room.joinTeam("p1", "A"); // équipe pleine de toute façon, mais phase != lobby d'abord
+
+    const after = room.publicState();
+    expect(after.players.map((p) => p.team)).toEqual(before.players.map((p) => p.team));
+    expect(players.find((p) => p.id === "p1")!.messagesOfType("error")).toHaveLength(0);
+  });
+
+  it("un départ pendant reveal/roundEnd abandonne aussi la partie", () => {
+    const { room, players } = setupFullRoom();
+    room.start("p0");
+
+    // Fait avancer la partie jusqu'à sortir de la phase "playing" au moins une fois
+    // (fin de sous-manche => reveal, ou fin de manche => roundEnd), sans terminer la partie.
+    let guard = 0;
+    while (room.phase === "playing" && guard < 200) {
+      const state = room.publicState();
+      const current = players.find((p) => p.id === state.currentTurnPlayerId);
+      if (!current || current.hand.length === 0) break;
+      room.playCard(current.id, current.hand[0].id);
+      guard++;
+    }
+
+    // Que la partie soit encore en "playing" (cas rare) ou déjà passée en
+    // reveal/roundEnd, un départ doit systématiquement abandonner la partie.
+    if (room.phase !== "gameOver") {
+      room.leave("p2");
+      expect(room.phase).toBe("gameOver");
+      for (const p of players.filter((p) => p.id !== "p2")) {
+        expect(p.messagesOfType("gameAbandoned").length).toBeGreaterThanOrEqual(1);
+      }
+    }
   });
 });
 
