@@ -34,7 +34,7 @@ flutter test            # widget/unit tests (the e2e-tagged test self-skips if t
 flutter test --tags e2e test/game_client_e2e_test.dart   # full-game E2E vs live local server (start server first)
 flutter run              # launch on connected device/emulator
 ```
-The client connects to `ws://localhost:2567` by default; override at build time with `--dart-define=RONDA_SERVER=ws://host:port` (Android emulator needs `ws://10.0.2.2:2567`).
+The client connects to the production server (`wss://ronda-server.fly.dev`, hosted on Fly.io) by default; for local dev against `npm run dev`, override with `--dart-define=RONDA_SERVER=ws://host:port` (Android emulator needs `ws://10.0.2.2:2567`).
 
 ## Architecture
 

@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/app_strings.dart';
 import '../models/protocol.dart';
 import '../net/game_client.dart';
 import '../theme.dart';
 import '../widgets/chunky_button.dart';
 import 'lobby_screen.dart';
+import 'settings_screen.dart';
 
 /// Accueil : pseudo + créer une partie ou rejoindre avec un code,
 /// façon Among Us — aucune inscription (GDD 3.1).
@@ -56,15 +58,17 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  String? get _nicknameError {
+  String? _nicknameError(AppStrings strings) {
     final nick = _nicknameController.text.trim();
-    if (nick.isEmpty) return 'Choisis un pseudo';
+    if (nick.isEmpty) return strings.t('home.nicknameEmpty');
     return null;
   }
 
   Future<void> _createRoom() async {
-    if (_nicknameError != null) {
-      _showError(_nicknameError!);
+    final strings = context.read<AppStrings>();
+    final error = _nicknameError(strings);
+    if (error != null) {
+      _showError(error);
       return;
     }
     await _perform(
@@ -77,21 +81,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _joinRoom() async {
-    if (_nicknameError != null) {
-      _showError(_nicknameError!);
+    final strings = context.read<AppStrings>();
+    final error = _nicknameError(strings);
+    if (error != null) {
+      _showError(error);
       return;
     }
     final code = _codeController.text.trim().toUpperCase();
     if (code.length != 5) {
-      _showError('Le code doit faire 5 caractères');
+      _showError(strings.t('home.codeLength'));
       return;
     }
     await _perform(() => context.read<GameClient>().joinRoom(code, _nicknameController.text.trim()));
   }
 
   Future<void> _joinPublicRoom(String roomCode) async {
-    if (_nicknameError != null) {
-      _showError(_nicknameError!);
+    final strings = context.read<AppStrings>();
+    final error = _nicknameError(strings);
+    if (error != null) {
+      _showError(error);
       return;
     }
     await _perform(() => context.read<GameClient>().joinRoom(roomCode, _nicknameController.text.trim()));
@@ -135,7 +143,8 @@ class _HomeScreenState extends State<HomeScreen> {
     client.addListener(listener);
     try {
       await completer.future.timeout(const Duration(seconds: 8), onTimeout: () {
-        client.lastError ??= 'Le serveur ne répond pas';
+        if (!mounted) return;
+        client.lastError ??= context.read<AppStrings>().t('home.serverTimeout');
       });
     } finally {
       client.removeListener(listener);
@@ -154,160 +163,212 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<AppStrings>();
     return Scaffold(
       body: IllustratedBackground(
         asset: 'assets/ui/home_bg.png',
         child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) => SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight,
-                  maxWidth: 420,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // Le tiers supérieur laisse respirer le logo peint dans le fond.
-                    SizedBox(height: constraints.maxHeight * 0.34),
-
-                    ChunkyPanel(
-                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'TON PSEUDO',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 2,
-                              color: Color(0xFF6B4A26),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          _ParchmentField(
-                            controller: _nicknameController,
-                            hint: 'EX. HAMZA',
-                            maxLength: 20,
-                            fontSize: 18,
-                            icon: Icons.person_rounded,
-                          ),
-                        ],
-                      ),
+          child: Stack(
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 28),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                      maxWidth: 420,
                     ),
-                    const SizedBox(height: 14),
-
-                    // Choix du mode de jeu avant la création.
-                    Row(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        Expanded(
-                          child: _ModeChip(
-                            label: '2 VS 2',
-                            icon: Icons.groups_rounded,
-                            selected: _mode == '2v2',
-                            onTap: () => setState(() => _mode = '2v2'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _ModeChip(
-                            label: '1 VS 1',
-                            icon: Icons.sports_kabaddi_rounded,
-                            selected: _mode == '1v1',
-                            onTap: () => setState(() => _mode = '1v1'),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
+                        // Le tiers supérieur laisse respirer le logo peint dans le fond.
+                        SizedBox(height: constraints.maxHeight * 0.34),
 
-                    // Partie publique = visible dans la liste ci-dessous, sans code
-                    // à partager (utile tant que le matchmaking mondial n'existe pas).
-                    GestureDetector(
-                      onTap: () => setState(() => _isPublic = !_isPublic),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Checkbox(
-                            value: _isPublic,
-                            onChanged: (v) => setState(() => _isPublic = v ?? false),
-                            activeColor: const Color(0xFF8FA83B),
-                            side: const BorderSide(color: Color(0xFF3A2417), width: 2),
-                          ),
-                          const Text(
-                            'PARTIE PUBLIQUE (visible par tous)',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.5,
-                              color: Color(0xFF4A2E15),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    ChunkyButton.red(
-                      label: 'CRÉER UNE PARTIE',
-                      icon: Icons.play_arrow_rounded,
-                      onPressed: _busy ? null : _createRoom,
-                    ),
-                    const SizedBox(height: 22),
-
-                    _PublicRoomsList(onJoin: _busy ? null : _joinPublicRoom),
-                    const SizedBox(height: 22),
-
-                    ChunkyPanel(
-                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'REJOINDRE AVEC UN CODE',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 2,
-                              color: Color(0xFF6B4A26),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          _ParchmentField(
-                            controller: _codeController,
-                            hint: 'ABCDE',
-                            maxLength: 5,
-                            fontSize: 24,
-                            letterSpacing: 8,
-                            icon: Icons.vpn_key_rounded,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
-                              UpperCaseTextFormatter(),
+                        ChunkyPanel(
+                          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                          child: Column(
+                            children: [
+                              Text(
+                                strings.t('home.nicknameLabel'),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 2,
+                                  color: Color(0xFF6B4A26),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              _ParchmentField(
+                                controller: _nicknameController,
+                                hint: strings.t('home.nicknameHint'),
+                                maxLength: 20,
+                                fontSize: 18,
+                                icon: Icons.person_rounded,
+                              ),
                             ],
                           ),
-                          const SizedBox(height: 12),
-                          ChunkyButton.green(
-                            label: 'REJOINDRE',
-                            icon: Icons.group_rounded,
-                            height: 54,
-                            fontSize: 18,
-                            onPressed: _busy ? null : _joinRoom,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Choix du mode de jeu avant la création.
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _ModeChip(
+                                label: strings.t('home.mode2v2'),
+                                icon: Icons.groups_rounded,
+                                selected: _mode == '2v2',
+                                onTap: () => setState(() => _mode = '2v2'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _ModeChip(
+                                label: strings.t('home.mode1v1'),
+                                icon: Icons.sports_kabaddi_rounded,
+                                selected: _mode == '1v1',
+                                onTap: () => setState(() => _mode = '1v1'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Partie publique = visible dans la liste ci-dessous, sans code
+                        // à partager (utile tant que le matchmaking mondial n'existe pas).
+                        GestureDetector(
+                          onTap: () => setState(() => _isPublic = !_isPublic),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Checkbox(
+                                value: _isPublic,
+                                onChanged: (v) => setState(() => _isPublic = v ?? false),
+                                activeColor: const Color(0xFF8FA83B),
+                                side: const BorderSide(color: Color(0xFF3A2417), width: 2),
+                              ),
+                              Flexible(
+                                child: Text(
+                                  strings.t('home.publicRoom').toUpperCase(),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.5,
+                                    color: Color(0xFF4A2E15),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        ChunkyButton.red(
+                          label: strings.t('home.createRoom'),
+                          icon: Icons.play_arrow_rounded,
+                          onPressed: _busy ? null : _createRoom,
+                        ),
+                        const SizedBox(height: 22),
+
+                        ChunkyPanel(
+                          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                          child: Column(
+                            children: [
+                              Text(
+                                strings.t('home.joinWithCode'),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 2,
+                                  color: Color(0xFF6B4A26),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              _ParchmentField(
+                                controller: _codeController,
+                                hint: strings.t('home.codeHint'),
+                                maxLength: 5,
+                                fontSize: 24,
+                                letterSpacing: 8,
+                                icon: Icons.vpn_key_rounded,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                                  UpperCaseTextFormatter(),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              ChunkyButton.green(
+                                label: strings.t('home.join'),
+                                icon: Icons.group_rounded,
+                                height: 54,
+                                fontSize: 18,
+                                onPressed: _busy ? null : _joinRoom,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 22),
+
+                        _PublicRoomsList(onJoin: _busy ? null : _joinPublicRoom),
+                        const SizedBox(height: 26),
+                        if (_busy)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: CircularProgressIndicator(color: RondaColors.goldLight),
+                          ),
+                      ],
                     ),
-                    const SizedBox(height: 26),
-                    if (_busy)
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 12),
-                        child: CircularProgressIndicator(color: RondaColors.goldLight),
-                      ),
-                  ],
+                  ),
                 ),
               ),
-            ),
+              Positioned(
+                top: 4,
+                right: 4,
+                child: _RoundIconButton(
+                  icon: Icons.settings_rounded,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RoundIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _RoundIconButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFF4E3BC), Color(0xFFDDC08A)],
+          ),
+          border: Border.all(color: const Color(0xFF3A2417), width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 4,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Icon(icon, color: const Color(0xFF4A2E15), size: 22),
       ),
     );
   }
@@ -484,14 +545,15 @@ class _PublicRoomsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rooms = context.watch<GameClient>().publicRooms;
+    final strings = context.watch<AppStrings>();
 
     return ChunkyPanel(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
       child: Column(
         children: [
-          const Text(
-            'PARTIES PUBLIQUES',
-            style: TextStyle(
+          Text(
+            strings.t('home.publicRoomsTitle'),
+            style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w900,
               letterSpacing: 2,
@@ -500,12 +562,12 @@ class _PublicRoomsList extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           if (rooms.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 6),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
               child: Text(
-                'Aucune partie publique ouverte pour le moment',
+                strings.t('home.noPublicRooms'),
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF6B4A26),
@@ -535,6 +597,8 @@ class _PublicRoomRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<AppStrings>();
+    final mode = room.mode == '1v1' ? strings.t('home.mode1v1') : strings.t('home.mode2v2');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -553,7 +617,7 @@ class _PublicRoomRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Salon de ${room.hostNickname}',
+                  strings.t('home.roomOf', {'nickname': room.hostNickname}).toUpperCase(),
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
@@ -562,7 +626,11 @@ class _PublicRoomRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  '${room.mode == '1v1' ? '1 VS 1' : '2 VS 2'} · ${room.playerCount}/${room.maxPlayers} joueurs',
+                  strings.t('home.roomSubtitle', {
+                    'mode': mode,
+                    'count': room.playerCount,
+                    'max': room.maxPlayers,
+                  }),
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -574,7 +642,7 @@ class _PublicRoomRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           ChunkyButton.green(
-            label: 'REJOINDRE',
+            label: strings.t('home.join'),
             height: 40,
             fontSize: 13,
             onPressed: onJoin == null ? null : () => onJoin!(room.roomCode),

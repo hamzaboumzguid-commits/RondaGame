@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/app_strings.dart';
 import '../models/protocol.dart';
 import '../net/game_client.dart';
 import '../theme.dart';
@@ -120,6 +121,7 @@ class _GameScreenState extends State<GameScreen> {
   @override
   Widget build(BuildContext context) {
     final client = context.watch<GameClient>();
+    final strings = context.watch<AppStrings>();
     final state = client.state;
 
     if (state == null) {
@@ -170,7 +172,7 @@ class _GameScreenState extends State<GameScreen> {
                   ignoring: _currentEvent != null,
                   child: Column(
                     children: [
-                      _ScoreBar(state: state, onQuit: () async {
+                      _ScoreBar(state: state, strings: strings, onQuit: () async {
                         final quit = await _confirmQuit();
                         if (quit == true && mounted) _exitToHome();
                       }),
@@ -186,6 +188,7 @@ class _GameScreenState extends State<GameScreen> {
                               child: _FeltTable(
                                 cards: state.tablePile,
                                 pendingDerba: state.pendingDerba,
+                                strings: strings,
                               ),
                             ),
                             _SeatBadge(
@@ -193,7 +196,7 @@ class _GameScreenState extends State<GameScreen> {
                           ],
                         ),
                       ),
-                      _TurnIndicator(state: state, myId: client.playerId),
+                      _TurnIndicator(state: state, myId: client.playerId, strings: strings),
                       const SizedBox(height: 4),
                       if (client.isMyTurn && state.turnEndsAt > 0)
                         _MyCountdownBar(
@@ -213,6 +216,7 @@ class _GameScreenState extends State<GameScreen> {
                         visible: selectedCard != null && client.isMyTurn,
                         capture: wouldCapture,
                         onPlay: _playSelected,
+                        strings: strings,
                       ),
                       const SizedBox(height: 2),
                       _FanHand(
@@ -260,6 +264,9 @@ class _GameScreenState extends State<GameScreen> {
           key: ValueKey('missa-${event.playedCardId}'),
           playerNickname: nicknameOf(event.playerId),
           onDone: _onEventDone,
+          // Si on arrive ici via _inMissaPhase après une Derba, le DerbaOverlay
+          // a déjà affiché le total (Derba + point de Missa cumulés, GDD 2.8).
+          pointsAlreadyShown: event.isDerba,
         ),
       SubRoundRevealEvent() => RevealOverlay(
           event: event,
@@ -282,23 +289,24 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<bool?> _confirmQuit() {
+    final strings = context.read<AppStrings>();
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: RondaColors.wood,
-        title: const Text('Quitter la partie ?', style: TextStyle(color: RondaColors.cream)),
-        content: const Text(
-          'La partie sera annulée pour tous les joueurs.',
-          style: TextStyle(color: RondaColors.creamDark),
+        title: Text(strings.t('game.quitTitle'), style: const TextStyle(color: RondaColors.cream)),
+        content: Text(
+          strings.t('game.quitBody'),
+          style: const TextStyle(color: RondaColors.creamDark),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Rester', style: TextStyle(color: RondaColors.gold)),
+            child: Text(strings.t('game.quitStay'), style: const TextStyle(color: RondaColors.gold)),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Quitter', style: TextStyle(color: RondaColors.red)),
+            child: Text(strings.t('game.quitConfirm'), style: const TextStyle(color: RondaColors.red)),
           ),
         ],
       ),
@@ -329,9 +337,10 @@ class _InstantDoneState extends State<_InstantDone> {
 /// Barre de score : deux panneaux d'équipe avec progression vers 41.
 class _ScoreBar extends StatelessWidget {
   final PublicState state;
+  final AppStrings strings;
   final VoidCallback onQuit;
 
-  const _ScoreBar({required this.state, required this.onQuit});
+  const _ScoreBar({required this.state, required this.strings, required this.onQuit});
 
   @override
   Widget build(BuildContext context) {
@@ -339,7 +348,7 @@ class _ScoreBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
       child: Row(
         children: [
-          Expanded(child: _TeamPanel(team: 'A', score: state.scores['A'] ?? 0)),
+          Expanded(child: _TeamPanel(team: 'A', score: state.scores['A'] ?? 0, strings: strings)),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Column(
@@ -354,7 +363,7 @@ class _ScoreBar extends StatelessWidget {
                   child: Column(
                     children: [
                       Text(
-                        'TER7 ${state.roundNumber}',
+                        strings.t('game.roundBadge', {'n': state.roundNumber}),
                         style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
@@ -363,7 +372,10 @@ class _ScoreBar extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'TFRI9A ${state.dealIndex + 1}/${state.dealsPerRound}',
+                        strings.t('game.dealBadge', {
+                          'n': state.dealIndex + 1,
+                          'total': state.dealsPerRound,
+                        }),
                         style: const TextStyle(fontSize: 10, color: RondaColors.creamDark),
                       ),
                     ],
@@ -378,7 +390,14 @@ class _ScoreBar extends StatelessWidget {
               ],
             ),
           ),
-          Expanded(child: _TeamPanel(team: 'B', score: state.scores['B'] ?? 0, mirrored: true)),
+          Expanded(
+            child: _TeamPanel(
+              team: 'B',
+              score: state.scores['B'] ?? 0,
+              mirrored: true,
+              strings: strings,
+            ),
+          ),
         ],
       ),
     );
@@ -389,8 +408,14 @@ class _TeamPanel extends StatelessWidget {
   final String team;
   final int score;
   final bool mirrored;
+  final AppStrings strings;
 
-  const _TeamPanel({required this.team, required this.score, this.mirrored = false});
+  const _TeamPanel({
+    required this.team,
+    required this.score,
+    required this.strings,
+    this.mirrored = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -422,7 +447,7 @@ class _TeamPanel extends StatelessWidget {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                'ÉQUIPE $team ',
+                '${strings.t('lobby.teamHeader', {'letter': team})} ',
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
@@ -685,6 +710,7 @@ class _AnnouncementPillState extends State<AnnouncementPill>
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<AppStrings>();
     final isTringa = widget.kind == 'tringa';
     final colors = isTringa
         ? const [Color(0xFFB65CE8), Color(0xFF7B2FA8)] // violet royal : la Tringa est rare
@@ -708,7 +734,7 @@ class _AnnouncementPillState extends State<AnnouncementPill>
           ],
         ),
         child: Text(
-          isTringa ? 'TRINGA !' : 'RONDA !',
+          isTringa ? strings.t('game.announcementTringa') : strings.t('game.announcementRonda'),
           style: TextStyle(
             fontSize: widget.fontSize,
             fontWeight: FontWeight.w900,
@@ -854,8 +880,9 @@ class _PulsingRingState extends State<_PulsingRing> with SingleTickerProviderSta
 class _FeltTable extends StatelessWidget {
   final List<GameCard> cards;
   final List<GameCard> pendingDerba;
+  final AppStrings strings;
 
-  const _FeltTable({required this.cards, required this.pendingDerba});
+  const _FeltTable({required this.cards, required this.pendingDerba, required this.strings});
 
   @override
   Widget build(BuildContext context) {
@@ -877,9 +904,9 @@ class _FeltTable extends StatelessWidget {
                   children: [
                     Icon(Icons.style_outlined, size: 34, color: RondaColors.goldLight),
                     const SizedBox(height: 4),
-                    const Text(
-                      'TABLE VIDE',
-                      style: TextStyle(fontSize: 12, color: RondaColors.creamDark),
+                    Text(
+                      strings.t('game.emptyTable'),
+                      style: const TextStyle(fontSize: 12, color: RondaColors.creamDark),
                     ),
                   ],
                 ),
@@ -892,7 +919,7 @@ class _FeltTable extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (pendingDerba.isNotEmpty) ...[
-                      _PendingDerbaStack(cards: pendingDerba),
+                      _PendingDerbaStack(cards: pendingDerba, strings: strings),
                       const SizedBox(height: 10),
                     ],
                     Wrap(
@@ -916,8 +943,9 @@ class _FeltTable extends StatelessWidget {
 /// que ça peut encore se faire reprendre.
 class _PendingDerbaStack extends StatefulWidget {
   final List<GameCard> cards;
+  final AppStrings strings;
 
-  const _PendingDerbaStack({required this.cards});
+  const _PendingDerbaStack({required this.cards, required this.strings});
 
   @override
   State<_PendingDerbaStack> createState() => _PendingDerbaStackState();
@@ -981,9 +1009,9 @@ class _PendingDerbaStackState extends State<_PendingDerbaStack>
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: RondaColors.gold.withValues(alpha: 0.7)),
             ),
-            child: const Text(
-              'DERBA — SURENCHÈRE ?',
-              style: TextStyle(
+            child: Text(
+              widget.strings.t('game.pendingDerba'),
+              style: const TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1,
@@ -1022,8 +1050,9 @@ class _TossedCard extends StatelessWidget {
 class _TurnIndicator extends StatelessWidget {
   final PublicState state;
   final String? myId;
+  final AppStrings strings;
 
-  const _TurnIndicator({required this.state, required this.myId});
+  const _TurnIndicator({required this.state, required this.myId, required this.strings});
 
   @override
   Widget build(BuildContext context) {
@@ -1046,8 +1075,10 @@ class _TurnIndicator extends StatelessWidget {
         ),
         child: Text(
           isMyTurn
-              ? '✦ À TOI DE JOUER ✦'
-              : 'AU TOUR DE ${(current?.nickname ?? "...").toUpperCase()}',
+              ? strings.t('game.yourTurn')
+              : strings.t('game.playerTurn', {
+                  'nickname': (current?.nickname ?? '...').toUpperCase(),
+                }),
           style: TextStyle(
             fontSize: isMyTurn ? 14 : 13,
             fontWeight: isMyTurn ? FontWeight.w900 : FontWeight.w500,
@@ -1169,8 +1200,14 @@ class _PlayButton extends StatefulWidget {
   final bool visible;
   final bool capture;
   final VoidCallback onPlay;
+  final AppStrings strings;
 
-  const _PlayButton({required this.visible, required this.capture, required this.onPlay});
+  const _PlayButton({
+    required this.visible,
+    required this.capture,
+    required this.onPlay,
+    required this.strings,
+  });
 
   @override
   State<_PlayButton> createState() => _PlayButtonState();
@@ -1235,7 +1272,9 @@ class _PlayButtonState extends State<_PlayButton> with SingleTickerProviderState
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      widget.capture ? 'CAPTURER !' : 'POSER',
+                      widget.capture
+                          ? widget.strings.t('game.captureButton')
+                          : widget.strings.t('game.playButton'),
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,

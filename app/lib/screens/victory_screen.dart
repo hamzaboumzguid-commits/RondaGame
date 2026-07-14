@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/app_strings.dart';
 import '../net/game_client.dart';
 import '../theme.dart';
 import '../widgets/chunky_button.dart';
@@ -35,6 +36,7 @@ class _VictoryScreenState extends State<VictoryScreen> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     final client = context.watch<GameClient>();
+    final strings = context.watch<AppStrings>();
     final myTeam = client.me?.team;
     final iWon = myTeam == widget.winningTeam;
     final scores = client.state?.scores ?? {};
@@ -73,7 +75,7 @@ class _VictoryScreenState extends State<VictoryScreen> with SingleTickerProvider
                     ),
                     const SizedBox(height: 18),
                     Text(
-                      iWon ? 'VICTOIRE !' : 'DÉFAITE',
+                      iWon ? strings.t('victory.win') : strings.t('victory.loss'),
                       style: TextStyle(
                         fontSize: 52,
                         fontWeight: FontWeight.w900,
@@ -90,7 +92,7 @@ class _VictoryScreenState extends State<VictoryScreen> with SingleTickerProvider
                       child: Column(
                         children: [
                           Text(
-                            'L\'ÉQUIPE ${widget.winningTeam} REMPORTE LA PARTIE',
+                            strings.t('victory.teamWins', {'team': widget.winningTeam}),
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
@@ -113,7 +115,7 @@ class _VictoryScreenState extends State<VictoryScreen> with SingleTickerProvider
                     SizedBox(
                       width: 280,
                       child: ChunkyButton.red(
-                        label: 'REJOUER',
+                        label: strings.t('victory.playAgain'),
                         icon: Icons.replay_rounded,
                         onPressed: () {
                           context.read<GameClient>().leaveRoom();

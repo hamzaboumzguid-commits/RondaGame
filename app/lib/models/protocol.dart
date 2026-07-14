@@ -266,32 +266,33 @@ class ErrorEvent extends GameEvent {
   ErrorEvent(this.code, this.message);
 }
 
-/// Libellés d'affichage des cartes.
-String rankLabel(int rank) {
+/// Libellés d'affichage des cartes. `t` vient de AppStrings.t (voir l10n/app_strings.dart) ;
+/// passé en paramètre plutôt qu'importé pour ne pas alourdir ce fichier de modèles.
+String rankLabel(int rank, String Function(String) t) {
   switch (rank) {
     case 1:
-      return 'As';
+      return t('rank.as');
     case 10:
-      return 'Valet';
+      return t('rank.valet');
     case 11:
-      return 'Cavalier';
+      return t('rank.cavalier');
     case 12:
-      return 'Roi';
+      return t('rank.roi');
     default:
       return '$rank';
   }
 }
 
-String suitLabel(String suit) {
+String suitLabel(String suit, String Function(String) t) {
   switch (suit) {
     case 'oros':
-      return 'Deniers';
+      return t('suit.deniers');
     case 'copas':
-      return 'Coupes';
+      return t('suit.coupes');
     case 'espadas':
-      return 'Épées';
+      return t('suit.espadas');
     case 'bastos':
-      return 'Bâtons';
+      return t('suit.batons');
     default:
       return suit;
   }

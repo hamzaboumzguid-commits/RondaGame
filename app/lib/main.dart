@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import 'l10n/app_strings.dart';
 import 'net/game_client.dart';
 import 'screens/home_screen.dart';
 import 'theme.dart';
@@ -20,8 +21,11 @@ class RondaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => GameClient(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => GameClient()),
+        ChangeNotifierProvider(create: (_) => AppStrings()),
+      ],
       child: MaterialApp(
         title: 'Ronda',
         debugShowCheckedModeBanner: false,

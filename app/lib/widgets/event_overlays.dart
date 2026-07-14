@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../l10n/app_strings.dart';
 import '../models/protocol.dart';
 import '../theme.dart';
 import 'playing_card.dart';
@@ -121,6 +123,7 @@ class _DerbaOverlayState extends State<DerbaOverlay> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<AppStrings>();
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -165,8 +168,15 @@ class _DerbaOverlayState extends State<DerbaOverlay> with SingleTickerProviderSt
                     scale: scale,
                     child: _JuicyText(
                       // Surenchères en darija : 7BIYEL puis JOUJ 7BOULA (GDD 2.7).
-                      label: switch (tier) { 1 => 'DERBA !', 2 => '7BIYEL !', _ => 'JOUJ\n7BOULA !' },
-                      sub: '+${widget.points} PTS · ${widget.playerNickname.toUpperCase()}',
+                      label: switch (tier) {
+                        1 => strings.t('overlay.derbaTier1'),
+                        2 => strings.t('overlay.derbaTier2'),
+                        _ => strings.t('overlay.derbaTier3').replaceAll(' ', '\n'),
+                      },
+                      sub: strings.t('overlay.pointsEarned', {
+                        'n': widget.points,
+                        'nickname': widget.playerNickname.toUpperCase(),
+                      }),
                       fontSize: switch (tier) { 1 => 46, 2 => 56, _ => 66 },
                     ),
                   ),
@@ -185,8 +195,16 @@ class _DerbaOverlayState extends State<DerbaOverlay> with SingleTickerProviderSt
 class MissaOverlay extends StatefulWidget {
   final String playerNickname;
   final VoidCallback onDone;
+  // Derba+Missa simultanées (GDD 2.8) : le point de Missa est déjà inclus
+  // dans le total affiché par le DerbaOverlay précédent — ne pas le recompter.
+  final bool pointsAlreadyShown;
 
-  const MissaOverlay({super.key, required this.playerNickname, required this.onDone});
+  const MissaOverlay({
+    super.key,
+    required this.playerNickname,
+    required this.onDone,
+    this.pointsAlreadyShown = false,
+  });
 
   @override
   State<MissaOverlay> createState() => _MissaOverlayState();
@@ -213,6 +231,7 @@ class _MissaOverlayState extends State<MissaOverlay> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<AppStrings>();
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -232,8 +251,13 @@ class _MissaOverlayState extends State<MissaOverlay> with SingleTickerProviderSt
                 child: Transform.scale(
                   scale: scale,
                   child: _JuicyText(
-                    label: 'MISSA !',
-                    sub: '+1 PT · ${widget.playerNickname.toUpperCase()}',
+                    label: strings.t('overlay.missa'),
+                    sub: widget.pointsAlreadyShown
+                        ? widget.playerNickname.toUpperCase()
+                        : strings.t('overlay.pointsEarned', {
+                            'n': 1,
+                            'nickname': widget.playerNickname.toUpperCase(),
+                          }),
                     fontSize: 42,
                     gradient: const [Color(0xFFC8F5D8), Color(0xFF5BC98A), Color(0xFF2E8B57)],
                   ),
@@ -358,24 +382,32 @@ class _RevealOverlayState extends State<RevealOverlay> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<AppStrings>();
     final anns = widget.event.announcements;
     final points = widget.event.points;
     return _AnnouncementPanel(
-      title: anns.isEmpty ? 'FIN DE LA TFRI9A' : 'WACH KAYN CHI RWANED ?',
+      title: anns.isEmpty
+          ? strings.t('overlay.revealNoAnnouncement')
+          : strings.t('overlay.revealAskAnnouncement'),
       icon: anns.isEmpty ? Icons.style_rounded : Icons.celebration_rounded,
       children: [
         if (anns.isEmpty)
-          const _PanelRow(
+          _PanelRow(
             icon: Icons.visibility_off_rounded,
-            label: 'AUCUNE ANNONCE',
+            label: strings.t('overlay.noAnnouncement'),
             value: '',
           ),
         for (final a in anns)
           _PanelRow(
             icon: a.kind == 'tringa' ? Icons.auto_awesome_rounded : Icons.stars_rounded,
             iconColor: a.kind == 'tringa' ? const Color(0xFFB65CE8) : RondaColors.goldLight,
-            label: '${widget.nicknameOf(a.playerId).toUpperCase()} — '
-                '${a.kind == 'tringa' ? 'TRINGA' : 'RONDA'} DE ${rankLabel(a.rank).toUpperCase()}',
+            label: strings.t('overlay.announcementRow', {
+              'nickname': widget.nicknameOf(a.playerId).toUpperCase(),
+              'kind': a.kind == 'tringa'
+                  ? strings.t('game.announcementTringa').replaceAll(' !', '').replaceAll('!', '')
+                  : strings.t('game.announcementRonda').replaceAll(' !', '').replaceAll('!', ''),
+              'rank': rankLabel(a.rank, strings.t).toUpperCase(),
+            }),
             value: '',
             labelColor: RondaColors.teamLight(a.team),
           ),
@@ -384,13 +416,13 @@ class _RevealOverlayState extends State<RevealOverlay> {
           _PanelRow(
             icon: Icons.add_circle_rounded,
             iconColor: RondaColors.teamLight(entry.key),
-            label: 'ÉQUIPE ${entry.key}',
-            value: '+${entry.value} PTS',
+            label: strings.t('overlay.teamHeader', {'letter': entry.key}),
+            value: strings.t('overlay.pointsRow', {'n': entry.value}),
           ),
         if (points.isEmpty && anns.isNotEmpty)
-          const _PanelRow(
+          _PanelRow(
             icon: Icons.balance_rounded,
-            label: 'ÉGALITÉ — AUCUN POINT',
+            label: strings.t('overlay.tieNoPoints'),
             value: '',
           ),
       ],
@@ -474,38 +506,42 @@ class _RoundEndOverlayState extends State<RoundEndOverlay> {
       );
     }
 
+    final strings = context.watch<AppStrings>();
     final e = widget.event;
     return _AnnouncementPanel(
-      title: 'FIN DU TER7',
+      title: strings.t('overlay.roundEndTitle'),
       icon: Icons.emoji_events_rounded,
       children: [
         _PanelRow(
           icon: Icons.style_rounded,
-          label: 'CARTES RAMASSÉES',
-          value: 'A ${e.cardCounts['A']} — ${e.cardCounts['B']} B',
+          label: strings.t('overlay.cardsCollected'),
+          value: strings.t('overlay.cardsCollectedValue', {
+            'countA': e.cardCounts['A'] ?? 0,
+            'countB': e.cardCounts['B'] ?? 0,
+          }),
         ),
         const SizedBox(height: 8),
         for (final entry in e.butinPoints.entries)
           _PanelRow(
             icon: Icons.savings_rounded,
             iconColor: RondaColors.teamLight(entry.key),
-            label: 'BUTIN ÉQUIPE ${entry.key}',
-            value: '+${entry.value} PTS',
+            label: strings.t('overlay.butinTeam', {'letter': entry.key}),
+            value: strings.t('overlay.pointsRow', {'n': entry.value}),
           ),
         if (e.butinPoints.isEmpty)
-          const _PanelRow(
+          _PanelRow(
             icon: Icons.balance_rounded,
-            label: 'BUTIN : ÉGALITÉ',
-            value: '0 PT',
+            label: strings.t('overlay.butinTie'),
+            value: strings.t('overlay.zeroPts'),
           ),
         for (final entry in e.bonusPoints.entries)
           _PanelRow(
             icon: e.lastCaptureRank == 12 ? Icons.workspace_premium_rounded : Icons.warning_rounded,
             iconColor: e.lastCaptureRank == 12 ? RondaColors.goldLight : const Color(0xFFE05A2B),
             label: e.lastCaptureRank == 12
-                ? 'DERNIÈRE PRISE AU ROI'
-                : 'AS EN DERNIÈRE PRISE',
-            value: '+${entry.value} PTS ÉQ. ${entry.key}',
+                ? strings.t('overlay.lastCaptureKing')
+                : strings.t('overlay.lastCaptureAce'),
+            value: strings.t('overlay.pointsTeamValue', {'n': entry.value, 'letter': entry.key}),
           ),
       ],
     );
@@ -558,6 +594,7 @@ class _DealOverlayState extends State<DealOverlay> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<AppStrings>();
     // Directions d'envol depuis le centre : bas (moi), haut, gauche, droite.
     final directions = widget.playerCount == 2
         ? const [Offset(0, 1), Offset(0, -1)]
@@ -608,8 +645,13 @@ class _DealOverlayState extends State<DealOverlay> with SingleTickerProviderStat
               child: Opacity(
                 opacity: veil.clamp(0, 1),
                 child: _JuicyText(
-                  label: 'TFRI9A ${widget.dealIndex + 1}/${widget.dealsPerRound}',
-                  sub: '${widget.dealerName.toUpperCase()} DISTRIBUE',
+                  label: strings.t('overlay.dealBadge', {
+                    'n': widget.dealIndex + 1,
+                    'total': widget.dealsPerRound,
+                  }),
+                  sub: strings.t('overlay.dealerDeals', {
+                    'nickname': widget.dealerName.toUpperCase(),
+                  }),
                   fontSize: 40,
                 ),
               ),
@@ -649,6 +691,7 @@ class _CardTallyOverlayState extends State<_CardTallyOverlay>
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<AppStrings>();
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -680,15 +723,15 @@ class _CardTallyOverlayState extends State<_CardTallyOverlay>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _JuicyText(label: 'BUTIN DU TER7', sub: '', fontSize: 30),
+                  _JuicyText(label: strings.t('overlay.tallyTitle'), sub: '', fontSize: 30),
                   const SizedBox(height: 22),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      _TeamTally(team: 'A', count: shownA, maxCount: 40),
+                      _TeamTally(team: 'A', count: shownA, maxCount: 40, strings: strings),
                       const SizedBox(width: 30),
-                      _TeamTally(team: 'B', count: shownB, maxCount: 40),
+                      _TeamTally(team: 'B', count: shownB, maxCount: 40, strings: strings),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -708,7 +751,9 @@ class _CardTallyOverlayState extends State<_CardTallyOverlay>
                           ],
                         ),
                         child: Text(
-                          isTie ? 'ÉGALITÉ 20-20' : '+$butin PTS · ÉQUIPE $leader',
+                          isTie
+                              ? strings.t('overlay.tallyTie')
+                              : strings.t('overlay.tallyResult', {'n': butin, 'letter': leader}),
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
@@ -736,8 +781,14 @@ class _TeamTally extends StatelessWidget {
   final String team;
   final int count;
   final int maxCount;
+  final AppStrings strings;
 
-  const _TeamTally({required this.team, required this.count, required this.maxCount});
+  const _TeamTally({
+    required this.team,
+    required this.count,
+    required this.maxCount,
+    required this.strings,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -793,7 +844,7 @@ class _TeamTally extends StatelessWidget {
           child: Column(
             children: [
               Text(
-                'ÉQ. $team',
+                strings.t('overlay.teamAbbrev', {'letter': team}),
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
@@ -870,6 +921,7 @@ class _LastCaptureOverlayState extends State<_LastCaptureOverlay>
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<AppStrings>();
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -914,8 +966,8 @@ class _LastCaptureOverlayState extends State<_LastCaptureOverlay>
                           shadows: const [Shadow(color: Colors.black87, blurRadius: 16)],
                         ),
                         _JuicyText(
-                          label: 'PRISE ROYALE !',
-                          sub: 'LE ROI CONCLUT · +5 PTS ÉQUIPE ${widget.team}',
+                          label: strings.t('overlay.royalCapture'),
+                          sub: strings.t('overlay.royalCaptureSub', {'letter': widget.team}),
                           fontSize: 48,
                         ),
                       ],
@@ -971,10 +1023,12 @@ class _LastCaptureOverlayState extends State<_LastCaptureOverlay>
                         ),
                       ),
                       _JuicyText(
-                        label: isAce ? 'AÏE... L\'AS !' : 'MAJEBTICH\n9A3TEK !',
+                        label: isAce
+                            ? strings.t('overlay.aceOuch')
+                            : strings.t('overlay.majebtich').replaceFirst(' ', '\n'),
                         sub: isAce
-                            ? 'DERNIÈRE PRISE À L\'AS · +5 PTS POUR L\'ADVERSAIRE'
-                            : 'LE LEAD N\'A PAS FAIT LA DERNIÈRE PRISE...',
+                            ? strings.t('overlay.aceSub')
+                            : strings.t('overlay.majebtichSub'),
                         fontSize: 44,
                         gradient: const [Color(0xFFD4E2F4), Color(0xFF8FA9C8), Color(0xFF5A7396)],
                       ),

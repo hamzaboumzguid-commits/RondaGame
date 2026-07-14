@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/app_strings.dart';
 import '../models/protocol.dart';
 import '../net/game_client.dart';
 import '../theme.dart';
@@ -76,6 +77,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
   @override
   Widget build(BuildContext context) {
     final client = context.watch<GameClient>();
+    final strings = context.watch<AppStrings>();
     final state = client.state;
 
     if (state == null) {
@@ -115,7 +117,11 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           border: Border.all(color: RondaColors.gold.withValues(alpha: 0.5)),
                         ),
                         child: Text(
-                          '${is1v1 ? "1V1" : "2V2"} · ${state.players.length}/$maxPlayers JOUEURS',
+                          strings.t('lobby.headerBadge', {
+                            'mode': is1v1 ? strings.t('home.mode1v1') : strings.t('home.mode2v2'),
+                            'count': state.players.length,
+                            'max': maxPlayers,
+                          }),
                           style: const TextStyle(
                             color: RondaColors.cream,
                             fontSize: 15,
@@ -132,10 +138,10 @@ class _LobbyScreenState extends State<LobbyScreen> {
                     onTap: () {
                       Clipboard.setData(ClipboardData(text: state.roomCode));
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('CODE COPIÉ !'),
+                        SnackBar(
+                          content: Text(strings.t('lobby.codeCopied')),
                           behavior: SnackBarBehavior.floating,
-                          duration: Duration(seconds: 1),
+                          duration: const Duration(seconds: 1),
                         ),
                       );
                     },
@@ -143,9 +149,9 @@ class _LobbyScreenState extends State<LobbyScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
                       child: Column(
                         children: [
-                          const Text(
-                            'CODE DE LA PARTIE — TAPE POUR COPIER',
-                            style: TextStyle(
+                          Text(
+                            strings.t('lobby.codeLabel'),
+                            style: const TextStyle(
                               fontSize: 10,
                               letterSpacing: 1.5,
                               fontWeight: FontWeight.w800,
@@ -186,6 +192,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                             myId: client.playerId,
                             slots: is1v1 ? 1 : 2,
                             onJoin: () => client.joinTeam('A'),
+                            strings: strings,
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -196,6 +203,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                             myId: client.playerId,
                             slots: is1v1 ? 1 : 2,
                             onJoin: () => client.joinTeam('B'),
+                            strings: strings,
                           ),
                         ),
                       ],
@@ -205,7 +213,9 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
                   if (client.isHost)
                     ChunkyButton.red(
-                      label: isFull ? 'LANCER LA PARTIE' : 'EN ATTENTE...',
+                      label: isFull
+                          ? strings.t('lobby.startGame')
+                          : strings.t('lobby.waitingForPlayers'),
                       icon: isFull ? Icons.play_arrow_rounded : Icons.hourglass_top_rounded,
                       onPressed: isFull ? client.startGame : null,
                     )
@@ -216,9 +226,9 @@ class _LobbyScreenState extends State<LobbyScreen> {
                         color: Colors.black.withValues(alpha: 0.35),
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: const Text(
-                        "EN ATTENTE DE L'HÔTE...",
-                        style: TextStyle(color: RondaColors.creamDark, fontSize: 15),
+                      child: Text(
+                        strings.t('lobby.waitingForHost'),
+                        style: const TextStyle(color: RondaColors.creamDark, fontSize: 15),
                       ),
                     ),
                 ],
@@ -272,6 +282,7 @@ class _TeamColumn extends StatelessWidget {
   final String? myId;
   final int slots; // 2 en 2v2, 1 en 1v1
   final VoidCallback onJoin;
+  final AppStrings strings;
 
   const _TeamColumn({
     required this.team,
@@ -279,6 +290,7 @@ class _TeamColumn extends StatelessWidget {
     required this.myId,
     required this.slots,
     required this.onJoin,
+    required this.strings,
   });
 
   @override
@@ -309,7 +321,7 @@ class _TeamColumn extends StatelessWidget {
       child: Column(
         children: [
           Text(
-            'ÉQUIPE $team',
+            strings.t('lobby.teamHeader', {'letter': team}),
             style: const TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w900,
@@ -320,17 +332,17 @@ class _TeamColumn extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           for (final player in players) ...[
-            _PlayerChip(player: player, isMe: player.id == myId),
+            _PlayerChip(player: player, isMe: player.id == myId, strings: strings),
             const SizedBox(height: 8),
           ],
           for (int i = players.length; i < slots; i++) ...[
-            const _EmptySlot(),
+            _EmptySlot(strings: strings),
             const SizedBox(height: 8),
           ],
           const Spacer(),
           if (!iAmInTeam)
             ChunkyButton(
-              label: 'REJOINDRE',
+              label: strings.t('lobby.joinTeam'),
               height: 46,
               fontSize: 14,
               color: light,
@@ -345,8 +357,9 @@ class _TeamColumn extends StatelessWidget {
 class _PlayerChip extends StatelessWidget {
   final PublicPlayer player;
   final bool isMe;
+  final AppStrings strings;
 
-  const _PlayerChip({required this.player, required this.isMe});
+  const _PlayerChip({required this.player, required this.isMe, required this.strings});
 
   @override
   Widget build(BuildContext context) {
@@ -385,7 +398,9 @@ class _PlayerChip extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              isMe ? '${player.nickname.toUpperCase()} (TOI)' : player.nickname.toUpperCase(),
+              isMe
+                  ? '${player.nickname.toUpperCase()} ${strings.t('lobby.youSuffix')}'
+                  : player.nickname.toUpperCase(),
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontWeight: isMe ? FontWeight.w900 : FontWeight.w600,
@@ -401,7 +416,9 @@ class _PlayerChip extends StatelessWidget {
 }
 
 class _EmptySlot extends StatelessWidget {
-  const _EmptySlot();
+  final AppStrings strings;
+
+  const _EmptySlot({required this.strings});
 
   @override
   Widget build(BuildContext context) {
@@ -419,7 +436,7 @@ class _EmptySlot extends StatelessWidget {
               size: 18, color: Colors.white.withValues(alpha: 0.55)),
           const SizedBox(width: 8),
           Text(
-            'PLACE LIBRE',
+            strings.t('lobby.emptySlot'),
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.65),
               fontStyle: FontStyle.italic,
