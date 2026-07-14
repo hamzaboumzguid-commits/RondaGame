@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Politique de confidentialité — RondaHsab</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fbf7f0;
+    --fg: #241a12;
+    --muted: #6b5c4d;
+    --accent: #b5652b;
+    --rule: #e4d9c9;
+    --card: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a140e;
+      --fg: #f2e9db;
+      --muted: #b6a58e;
+      --accent: #e0954f;
+      --rule: #392c20;
+      --card: #241b13;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  main {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 5rem;
+  }
+  header {
+    margin-bottom: 2.5rem;
+  }
+  h1 {
+    font-size: 1.75rem;
+    margin: 0 0 0.4rem;
+    letter-spacing: -0.01em;
+  }
+  .updated {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  h2 {
+    font-size: 1.15rem;
+    margin: 2.2rem 0 0.8rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  p { margin: 0.7rem 0; }
+  ul { margin: 0.7rem 0; padding-left: 1.3rem; }
+  li { margin: 0.35rem 0; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 1.1rem 1.3rem;
+    margin: 1rem 0;
+  }
+  .lead {
+    color: var(--muted);
+  }
+  a { color: var(--accent); }
+  code {
+    background: var(--rule);
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Politique de confidentialité — RondaHsab</h1>
+    <div class="updated">Dernière mise à jour : 14 juillet 2026</div>
+  </header>
+
+  <p class="lead">
+    RondaHsab est un jeu de cartes multijoueur en ligne (Ronda marocaine, variante café).
+    Cette page explique simplement ce que l'application fait et ne fait pas avec vos
+    informations.
+  </p>
+
+  <div class="card">
+    <strong>En résumé :</strong> pas de compte, pas de mot de passe, pas de collecte de
+    données personnelles, pas de publicité, pas de suivi. Les parties sont éphémères —
+    rien n'est conservé une fois la partie terminée.
+  </div>
+
+  <h2>Ce que l'application ne fait pas</h2>
+  <ul>
+    <li>Pas de création de compte ni d'inscription (ni email, ni téléphone, ni identifiant).</li>
+    <li>Pas de collecte de données personnelles identifiables.</li>
+    <li>Pas de publicité ni de SDK publicitaire tiers.</li>
+    <li>Pas de suivi analytique (analytics), pas de profilage.</li>
+    <li>Pas de partage de données avec des tiers.</li>
+    <li>Pas de stockage de l'historique des parties, scores ou statistiques après la fin d'une session.</li>
+  </ul>
+
+  <h2>Ce que l'application utilise</h2>
+  <p>Pour rejoindre une partie, chaque joueur saisit :</p>
+  <ul>
+    <li><strong>Un pseudo</strong> — un texte libre choisi par le joueur pour la durée de la partie uniquement.</li>
+    <li><strong>Un code de salon</strong> — un code à 5 caractères généré aléatoirement pour connecter les 4 joueurs entre eux.</li>
+  </ul>
+  <p>
+    Ces informations transitent uniquement entre les joueurs de la même partie, via le
+    serveur de jeu, le temps que la partie soit en cours. Elles ne sont associées à
+    aucune identité réelle et sont supprimées de la mémoire du serveur dès que la partie
+    se termine ou qu'un joueur quitte le salon. Aucune base de données ne conserve
+    l'historique des salons, pseudos ou parties jouées.
+  </p>
+
+  <h2>Stockage local sur l'appareil</h2>
+  <p>
+    L'application enregistre une seule préférence sur votre appareil : la langue
+    d'affichage choisie (français ou darija). Cette préférence reste locale, n'est
+    jamais transmise au serveur ni à un tiers, et peut être effacée en désinstallant
+    l'application.
+  </p>
+
+  <h2>Connexion réseau</h2>
+  <p>
+    L'application communique avec un serveur de jeu (<code>wss://ronda-server.fly.dev</code>)
+    uniquement pour synchroniser l'état de la partie en temps réel entre les 4 joueurs
+    (cartes jouées, scores, tour en cours). Cette connexion est nécessaire au
+    fonctionnement du jeu multijoueur et ne sert à aucune autre fin.
+  </p>
+
+  <h2>Public visé</h2>
+  <p>
+    RondaHsab ne cible pas spécifiquement les enfants et ne collecte aucune information
+    permettant d'identifier l'âge d'un utilisateur.
+  </p>
+
+  <h2>Modifications de cette politique</h2>
+  <p>
+    Si cette politique évolue (par exemple si une fonctionnalité future venait à
+    introduire un traitement de données), la date de mise à jour en haut de cette page
+    sera modifiée en conséquence.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    Pour toute question concernant cette politique de confidentialité, vous pouvez
+    contacter le développeur à l'adresse suivante :
+    <a href="mailto:hamzaboumzguid@gmail.com">hamzaboumzguid@gmail.com</a>.
+  </p>
+
+  <footer>
+    RondaHsab — jeu de cartes Ronda marocaine (variante café) pour 4 joueurs en ligne.
+  </footer>
+</main>
+</body>
+</html>
