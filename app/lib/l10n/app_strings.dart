@@ -109,7 +109,7 @@ const Map<String, String> _dj = {
   'home.mode2v2': '2 DED 2',
   'home.mode1v1': '1 DED 1',
   'home.publicRoom': 'TL3EB DED NASS FL3ALAM ?',
-  'home.createRoom': 'SAWWEB LO3BA',
+  'home.createRoom': 'SEYEB TER7',
   'home.joinWithCode': 'DKHOL B CODE',
   'home.codeHint': 'ABCDE',
   'home.join': 'DKHOL',
