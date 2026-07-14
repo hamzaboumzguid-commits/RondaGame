@@ -6,14 +6,14 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/protocol.dart';
 
-/// URL du serveur. Par défaut : serveur de production (Fly.io, wss://) — pour
-/// ne jamais risquer de builder une release qui pointe vers localhost par
-/// oubli du flag. En dev local, surcharger explicitement avec
+/// URL du serveur. Par défaut : serveur de production (VPS OVH, wss://) —
+/// pour ne jamais risquer de builder une release qui pointe vers localhost
+/// par oubli du flag. En dev local, surcharger explicitement avec
 /// --dart-define=RONDA_SERVER=ws://localhost:2567 (10.0.2.2 sur émulateur
 /// Android, localhost sur simulateur iOS / desktop).
 const String kDefaultServerUrl = String.fromEnvironment(
   'RONDA_SERVER',
-  defaultValue: 'wss://ronda-server.fly.dev',
+  defaultValue: 'wss://ronda.51-254-140-211.sslip.io',
 );
 
 enum ConnectionStatus { disconnected, connecting, connected }
