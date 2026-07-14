@@ -1,4 +1,4 @@
-package com.rondagame.ronda_app
+package com.hamzaboumzguid.rondahsab
 
 import io.flutter.embedding.android.FlutterActivity
 
