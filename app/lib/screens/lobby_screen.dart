@@ -8,6 +8,7 @@ import '../l10n/app_strings.dart';
 import '../models/protocol.dart';
 import '../net/game_client.dart';
 import '../theme.dart';
+import '../widgets/banner_ad_widget.dart';
 import '../widgets/chunky_button.dart';
 import 'game_screen.dart';
 
@@ -209,7 +210,9 @@ class _LobbyScreenState extends State<LobbyScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 12),
+                  const Center(child: BannerAdWidget()),
+                  const SizedBox(height: 12),
 
                   if (client.isHost)
                     ChunkyButton.red(

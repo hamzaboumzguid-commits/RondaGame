@@ -170,65 +170,82 @@ class _GameScreenState extends State<GameScreen> {
               children: [
                 IgnorePointer(
                   ignoring: _currentEvent != null,
-                  child: Column(
-                    children: [
-                      _ScoreBar(state: state, strings: strings, onQuit: () async {
-                        final quit = await _confirmQuit();
-                        if (quit == true && mounted) _exitToHome();
-                      }),
-                      const SizedBox(height: 2),
-                      _SeatBadge(player: facingPlayer, state: state),
-                      Expanded(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            _SeatBadge(
-                                player: is1v1 ? null : seatAt(3), state: state, compact: true),
-                            Expanded(
-                              child: _FeltTable(
-                                cards: state.tablePile,
-                                pendingDerba: state.pendingDerba,
-                                strings: strings,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      // Sur écran court/petit, on rétrécit proportionnellement la
+                      // partie basse (main + indicateurs) pour ne jamais écraser la
+                      // table centrale ni provoquer d'overflow. 720 dp de hauteur =
+                      // taille de référence (téléphone moyen) -> facteur 1.0.
+                      final scale =
+                          (constraints.maxHeight / 720).clamp(0.72, 1.0).toDouble();
+                      final gap2 = 2 * scale;
+                      return Column(
+                        children: [
+                          _ScoreBar(state: state, strings: strings, onQuit: () async {
+                            final quit = await _confirmQuit();
+                            if (quit == true && mounted) _exitToHome();
+                          }),
+                          SizedBox(height: gap2),
+                          _SeatBadge(player: facingPlayer, state: state),
+                          Expanded(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                _SeatBadge(
+                                    player: is1v1 ? null : seatAt(3),
+                                    state: state,
+                                    compact: true),
+                                Expanded(
+                                  child: _FeltTable(
+                                    cards: state.tablePile,
+                                    pendingDerba: state.pendingDerba,
+                                    strings: strings,
+                                  ),
+                                ),
+                                _SeatBadge(
+                                    player: is1v1 ? null : seatAt(1),
+                                    state: state,
+                                    compact: true),
+                              ],
+                            ),
+                          ),
+                          _TurnIndicator(
+                              state: state, myId: client.playerId, strings: strings),
+                          SizedBox(height: 4 * scale),
+                          if (client.isMyTurn && state.turnEndsAt > 0)
+                            _MyCountdownBar(
+                              key: ValueKey('countdown-${state.turnEndsAt}'),
+                              endsAt: state.turnEndsAt,
+                            ),
+                          if ((client.me?.announcementKind ?? '').isNotEmpty)
+                            Padding(
+                              padding: EdgeInsets.only(top: gap2),
+                              child: AnnouncementPill(
+                                kind: client.me!.announcementKind,
+                                fontSize: 13,
                               ),
                             ),
-                            _SeatBadge(
-                                player: is1v1 ? null : seatAt(1), state: state, compact: true),
-                          ],
-                        ),
-                      ),
-                      _TurnIndicator(state: state, myId: client.playerId, strings: strings),
-                      const SizedBox(height: 4),
-                      if (client.isMyTurn && state.turnEndsAt > 0)
-                        _MyCountdownBar(
-                          key: ValueKey('countdown-${state.turnEndsAt}'),
-                          endsAt: state.turnEndsAt,
-                        ),
-                      if ((client.me?.announcementKind ?? '').isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: AnnouncementPill(
-                            kind: client.me!.announcementKind,
-                            fontSize: 13,
+                          SizedBox(height: gap2),
+                          _PlayButton(
+                            visible: selectedCard != null && client.isMyTurn,
+                            capture: wouldCapture,
+                            onPlay: _playSelected,
+                            strings: strings,
                           ),
-                        ),
-                      const SizedBox(height: 2),
-                      _PlayButton(
-                        visible: selectedCard != null && client.isMyTurn,
-                        capture: wouldCapture,
-                        onPlay: _playSelected,
-                        strings: strings,
-                      ),
-                      const SizedBox(height: 2),
-                      _FanHand(
-                        cards: client.hand,
-                        selectedCardId: _selectedCardId,
-                        enabled: client.isMyTurn,
-                        onSelect: (id) => setState(
-                          () => _selectedCardId = _selectedCardId == id ? null : id,
-                        ),
-                        onPlaySelected: _playSelected,
-                      ),
-                    ],
+                          SizedBox(height: gap2),
+                          _FanHand(
+                            cards: client.hand,
+                            selectedCardId: _selectedCardId,
+                            enabled: client.isMyTurn,
+                            scale: scale,
+                            onSelect: (id) => setState(
+                              () => _selectedCardId = _selectedCardId == id ? null : id,
+                            ),
+                            onPlaySelected: _playSelected,
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
                 if (_currentEvent != null) _buildEventOverlay(client, state),
@@ -1299,6 +1316,7 @@ class _FanHand extends StatelessWidget {
   final List<GameCard> cards;
   final String? selectedCardId;
   final bool enabled;
+  final double scale;
   final ValueChanged<String> onSelect;
   final VoidCallback onPlaySelected;
 
@@ -1308,16 +1326,25 @@ class _FanHand extends StatelessWidget {
     required this.enabled,
     required this.onSelect,
     required this.onPlaySelected,
+    this.scale = 1.0,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (cards.isEmpty) return const SizedBox(height: 150);
+    if (cards.isEmpty) return SizedBox(height: 150 * scale);
 
-    const cardWidth = 84.0;
+    // Largeur de carte proportionnelle à la hauteur d'écran, et jamais plus
+    // large que ce que l'écran peut afficher sans chevauchement excessif.
+    final screenWidth = MediaQuery.of(context).size.width;
     final n = cards.length;
+    final cardWidth = math.min(84.0 * scale, (screenWidth - 24) / 3.2);
     // Écartement horizontal : chevauchement d'autant plus fort qu'il y a de cartes.
-    final step = n == 1 ? 0.0 : math.min(56.0, 250 / (n - 1));
+    // Borné aussi pour que l'éventail complet tienne dans la largeur écran.
+    final maxStepForWidth =
+        n == 1 ? 0.0 : (screenWidth - 24 - cardWidth) / (n - 1);
+    final step = n == 1
+        ? 0.0
+        : math.min(math.min(56.0 * scale, 250 * scale / (n - 1)), maxStepForWidth);
     final totalWidth = cardWidth + step * (n - 1);
     // Éventail : de -12° à +12° selon la position.
     final maxAngle = n == 1 ? 0.0 : math.min(0.21, 0.07 * (n - 1));
@@ -1333,7 +1360,7 @@ class _FanHand extends StatelessWidget {
     return Opacity(
       opacity: enabled ? 1 : 0.75,
       child: SizedBox(
-        height: 158,
+        height: 158 * scale,
         width: double.infinity,
         child: Stack(
           clipBehavior: Clip.none,
@@ -1353,9 +1380,9 @@ class _FanHand extends StatelessWidget {
     final selected = card.id == selectedCardId;
     final t = n == 1 ? 0.5 : i / (n - 1);
     final angle = (t - 0.5) * 2 * maxAngle;
-    // L'arc : les cartes du bord descendent légèrement.
-    final arcDrop = (1 - math.cos(angle)) * 260;
-    final lift = selected ? -30.0 : 0.0;
+    // L'arc : les cartes du bord descendent légèrement (mis à l'échelle).
+    final arcDrop = (1 - math.cos(angle)) * 260 * scale;
+    final lift = selected ? -30.0 * scale : 0.0;
 
     return Positioned(
       left: (MediaQuery.of(context).size.width - totalWidth) / 2 + i * step,

@@ -1,8 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:provider/provider.dart';
 
+import '../ads/ad_ids.dart';
 import '../l10n/app_strings.dart';
 import '../net/game_client.dart';
 import '../theme.dart';
@@ -19,17 +21,52 @@ class VictoryScreen extends StatefulWidget {
 
 class _VictoryScreenState extends State<VictoryScreen> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  InterstitialAd? _interstitialAd;
+  bool _disposed = false;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: const Duration(seconds: 3))
       ..repeat();
+    _loadInterstitial();
+  }
+
+  void _loadInterstitial() {
+    InterstitialAd.load(
+      adUnitId: AdIds.interstitial,
+      request: const AdRequest(),
+      adLoadCallback: InterstitialAdLoadCallback(
+        onAdLoaded: (ad) {
+          // L'écran de victoire a pu être quitté ("Rejouer") avant la fin du
+          // chargement asynchrone : ne pas afficher la pub par-dessus l'accueil.
+          if (_disposed) {
+            ad.dispose();
+            return;
+          }
+          _interstitialAd = ad;
+          ad.fullScreenContentCallback = FullScreenContentCallback(
+            onAdDismissedFullScreenContent: (ad) {
+              ad.dispose();
+              _interstitialAd = null;
+            },
+            onAdFailedToShowFullScreenContent: (ad, error) {
+              ad.dispose();
+              _interstitialAd = null;
+            },
+          );
+          ad.show();
+        },
+        onAdFailedToLoad: (error) {},
+      ),
+    );
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _controller.dispose();
+    _interstitialAd?.dispose();
     super.dispose();
   }
 
