@@ -40,6 +40,15 @@ class GameClient extends ChangeNotifier {
   PublicPlayer? get me => playerId == null ? null : state?.playerById(playerId!);
   bool get isHost => me?.isHost ?? false;
 
+  /// Délai au-delà duquel on cesse d'attendre le handshake : sans lui,
+  /// `channel.ready` peut rester en attente indéfiniment sur un réseau lent
+  /// ou filtré (constaté depuis l'Asie du Sud), laissant l'UI bloquée.
+  static const Duration kConnectTimeout = Duration(seconds: 10);
+
+  /// Établit la connexion. **Ne relance jamais** : l'échec est signalé par
+  /// `status == disconnected` + `lastError`. Un `rethrow` ici remontait en
+  /// exception asynchrone non capturée depuis les appelants « fire and
+  /// forget » (polling des salons publics au démarrage) et tuait l'app.
   Future<void> connect({String url = kDefaultServerUrl}) async {
     if (status != ConnectionStatus.disconnected) return;
     status = ConnectionStatus.connecting;
@@ -48,7 +57,7 @@ class GameClient extends ChangeNotifier {
 
     try {
       final channel = WebSocketChannel.connect(Uri.parse(url));
-      await channel.ready;
+      await channel.ready.timeout(kConnectTimeout);
       _channel = channel;
       _subscription = channel.stream.listen(
         _onMessage,
@@ -61,7 +70,6 @@ class GameClient extends ChangeNotifier {
       status = ConnectionStatus.disconnected;
       lastError = 'Impossible de joindre le serveur';
       notifyListeners();
-      rethrow;
     }
   }
 

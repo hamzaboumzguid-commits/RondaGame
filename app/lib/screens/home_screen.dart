@@ -38,15 +38,21 @@ class _HomeScreenState extends State<HomeScreen> {
     // le temps d'avoir assez d'utilisateurs pour un vrai matchmaking (2026-07-12).
     // connect() notifie ses listeners -> reporté après le premier frame pour ne
     // pas déclencher un rebuild du provider pendant que l'arbre se monte encore.
+    // Le résultat n'intéresse personne ici (la liste se met à jour via le
+    // provider) mais une erreur ne doit surtout pas remonter : c'est un appel
+    // « fire and forget », une exception y serait non capturée et tuerait
+    // l'app au lancement dès que le réseau est mauvais.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      client.requestPublicRooms();
+      unawaited(client.requestPublicRooms().catchError((_) {}));
     });
     _publicRoomsTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       // On cesse de solliciter le serveur dès qu'une room est rejointe : l'accueil
       // reste monté SOUS le lobby/jeu (Navigator.push, pas pushReplacement), donc
       // sans ce garde le polling continuerait toute la partie. `roomCode != null`
       // signale qu'on a reçu "joined" -> plus rien à lister depuis l'accueil.
-      if (!_busy && client.roomCode == null) client.requestPublicRooms();
+      if (!_busy && client.roomCode == null) {
+        unawaited(client.requestPublicRooms().catchError((_) {}));
+      }
     });
   }
 
@@ -108,11 +114,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _perform(Future<void> Function() action) async {
     setState(() => _busy = true);
     final client = context.read<GameClient>();
+    final strings = context.read<AppStrings>();
     // Repart d'une ardoise propre : une erreur laissée par une tentative
     // précédente ne doit pas être prise pour le résultat de celle-ci.
     client.clearError();
     try {
       await action();
+      // connect() ne lève plus : un échec de connexion se lit ici. Sans ce
+      // garde, on attendrait 8 s un "joined" qui ne peut pas arriver.
+      if (client.status != ConnectionStatus.connected) {
+        if (mounted) _showError(client.lastError ?? strings.t('home.serverTimeout'));
+        return;
+      }
       // Attend la confirmation "joined" (playerId assigné) ou une erreur serveur.
       await _waitForJoinOrError(client);
       if (!mounted) return;
@@ -173,7 +186,10 @@ class _HomeScreenState extends State<HomeScreen> {
               LayoutBuilder(
                 builder: (context, constraints) => SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 28),
-                  child: ConstrainedBox(
+                  // Centré horizontalement : sur tablette/grand écran les panneaux
+                  // restent au milieu (maxWidth 420) au lieu de se caler à gauche.
+                  child: Center(
+                    child: ConstrainedBox(
                     constraints: BoxConstraints(
                       minHeight: constraints.maxHeight,
                       maxWidth: 420,
@@ -318,6 +334,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                       ],
                     ),
+                  ),
                   ),
                 ),
               ),
