@@ -1,8 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:provider/provider.dart';
 
+import 'ads/consent_manager.dart';
 import 'l10n/app_strings.dart';
 import 'net/game_client.dart';
 import 'screens/home_screen.dart';
@@ -14,7 +16,11 @@ void main() {
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
-  MobileAds.instance.initialize();
+  // Consentement RGPD/UMP puis initialisation des pubs. Volontairement non
+  // attendu : le formulaire de consentement (EEE) et l'init AdMob ne doivent
+  // jamais retarder l'affichage de l'accueil. catchError en filet de sécurité :
+  // aucune erreur de ce flux ne doit remonter en exception non capturée.
+  unawaited(ConsentManager.gatherConsentThenInitAds().catchError((_) {}));
   runApp(const RondaApp());
 }
 
