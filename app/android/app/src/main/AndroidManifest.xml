@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Requise en release : sans elle, l'AAB n'a aucun accès réseau (WebSocket,
+         AdMob, UMP) et l'app plante/ne se connecte pas au lancement. En debug,
+         Flutter l'injecte via le manifest debug/, d'où le "marche en local,
+         crashe une fois publié". -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="RondaHsab"
         android:name="${applicationName}"
