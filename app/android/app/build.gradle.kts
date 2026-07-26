@@ -50,6 +50,15 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // R8 est de toute façon actif en release ; on l'explicite et surtout on
+            // fournit nos règles keep pour WorkManager/Room, sans quoi R8 supprime
+            // WorkDatabase_Impl et l'app plante au lancement (voir proguard-rules.pro).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
