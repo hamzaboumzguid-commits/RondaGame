@@ -45,18 +45,35 @@ class GameClient extends ChangeNotifier {
   /// ou filtré (constaté depuis l'Asie du Sud), laissant l'UI bloquée.
   static const Duration kConnectTimeout = Duration(seconds: 10);
 
+  /// Handshake en cours, s'il y en a un. Permet aux appelants concurrents
+  /// (polling des salons publics ET tap Créer/Rejoindre) d'attendre le MÊME
+  /// connect au lieu de retourner immédiatement : sans ça, le second appel
+  /// voyait `status == connecting`, retournait tout de suite, `_send` était un
+  /// no-op (channel encore null) et l'action utilisateur était perdue avec un
+  /// faux "serveur ne répond pas".
+  Future<void>? _connectFuture;
+
   /// Établit la connexion. **Ne relance jamais** : l'échec est signalé par
   /// `status == disconnected` + `lastError`. Un `rethrow` ici remontait en
   /// exception asynchrone non capturée depuis les appelants « fire and
   /// forget » (polling des salons publics au démarrage) et tuait l'app.
-  Future<void> connect({String url = kDefaultServerUrl}) async {
-    if (status != ConnectionStatus.disconnected) return;
+  ///
+  /// Un connect déjà en vol est réutilisé (mémoïsation) : tous les appelants
+  /// attendent le même handshake et voient donc un `status` définitif au retour.
+  Future<void> connect({String url = kDefaultServerUrl}) {
+    if (status == ConnectionStatus.connected) return Future.value();
+    return _connectFuture ??=
+        _doConnect(url).whenComplete(() => _connectFuture = null);
+  }
+
+  Future<void> _doConnect(String url) async {
     status = ConnectionStatus.connecting;
     lastError = null;
     notifyListeners();
 
+    WebSocketChannel? channel;
     try {
-      final channel = WebSocketChannel.connect(Uri.parse(url));
+      channel = WebSocketChannel.connect(Uri.parse(url));
       await channel.ready.timeout(kConnectTimeout);
       _channel = channel;
       _subscription = channel.stream.listen(
@@ -67,6 +84,10 @@ class GameClient extends ChangeNotifier {
       status = ConnectionStatus.connected;
       notifyListeners();
     } catch (e) {
+      // Ferme le canal orphelin : Future.timeout() n'annule pas le handshake
+      // sous-jacent, donc sans ça un socket resterait ouvert côté serveur si le
+      // réseau se rétablit après le timeout.
+      channel?.sink.close().catchError((_) {});
       status = ConnectionStatus.disconnected;
       lastError = 'Impossible de joindre le serveur';
       notifyListeners();

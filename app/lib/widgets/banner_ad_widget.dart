@@ -56,6 +56,11 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
         },
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
+          // Autorise une nouvelle tentative au prochain rebuild : sinon le garde
+          // `width == _loadedForWidth` bloquerait définitivement la bannière pour
+          // le reste de la session lobby après un premier échec (réseau instable).
+          _loadedForWidth = null;
+          _bannerAd = null;
         },
       ),
     );
