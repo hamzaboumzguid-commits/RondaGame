@@ -2,7 +2,7 @@ name: ronda_app
 description: "Ronda marocaine - jeu de cartes multijoueur en ligne."
 publish_to: 'none'
 
-version: 1.0.1+8
+version: 1.0.1+9
 
 environment:
   sdk: ^3.12.2
